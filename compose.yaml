@@ -1,0 +1,12 @@
+services:
+  tailhome:
+    image: ghcr.io/mickey/tailhome:latest
+    env_file: .env # TAILHOME_CLIENT_ID and TAILHOME_CLIENT_SECRET, see .env.example
+    environment:
+      TZ: Etc/UTC # your time zone, for the "updated" time
+    volumes:
+      - tailhome-data:/data
+    restart: unless-stopped
+
+volumes:
+  tailhome-data:

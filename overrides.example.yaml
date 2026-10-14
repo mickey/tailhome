@@ -1,0 +1,17 @@
+# Keys are Service names, with or without the svc: prefix. Every field is optional.
+jellyfin:
+  group: Media
+  order: -10                # lower sorts first; unset counts as 0, ties sort by label
+grafana:
+  label: Grafana
+  description: Metrics and dashboards
+  icon: grafana             # a dashboard-icons name, or a full image URL
+  url: https://grafana.example.ts.net/d/main
+nas:
+  url: vnc://nas.example.ts.net:5900   # also ssh, rdp, smb, ftp, sftp, telnet; TCP-checked
+whoami:
+  web: true                 # always a tile, even before it answers HTTP
+pgadmin:
+  web: false                # under "Other" instead of a tile
+postgres:
+  hidden: true

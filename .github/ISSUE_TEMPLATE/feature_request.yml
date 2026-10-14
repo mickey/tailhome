@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest an improvement to tailhome.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you would like and any alternatives you considered.
+    validations:
+      required: true

@@ -1,0 +1,63 @@
+version: 2
+project_name: tailhome
+builds:
+  - id: tailhome
+    binary: tailhome
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - overrides.example.yaml
+checksum:
+  name_template: checksums.txt
+dockers_v2:
+  - images:
+      - ghcr.io/mickey/tailhome
+    dockerfile: Dockerfile.goreleaser
+    ids:
+      - tailhome
+    platforms:
+      - linux/amd64
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - "{{.Version}}"
+      - "{{ if not .Prerelease }}{{.Major}}.{{.Minor}}{{ end }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    labels:
+      org.opencontainers.image.source: https://github.com/mickey/tailhome
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.version: "{{.Version}}"
+      org.opencontainers.image.revision: "{{.FullCommit}}"
+      org.opencontainers.image.created: "{{.Date}}"
+      org.opencontainers.image.description: Start page built from your Tailscale Services
+release:
+  prerelease: auto

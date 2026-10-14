@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a problem with tailhome.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: tailhome version
+      description: Run tailhome -version or provide the container image tag.
+    validations:
+      required: true
+  - type: input
+    id: tailscale-version
+    attributes:
+      label: Tailscale client version
+      description: Version of the Tailscale client used to access tailhome.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How do you run tailhome?
+      options:
+        - Docker
+        - Binary
+        - systemd
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include steps to reproduce, expected behavior, and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Remove secrets, tokens, private hostnames, and other sensitive information before posting.
+      render: text

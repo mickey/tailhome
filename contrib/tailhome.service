@@ -1,0 +1,24 @@
+[Unit]
+Description=tailhome start page for Tailscale Services
+Wants=network-online.target
+After=network-online.target
+# tailhome contacts the Tailscale API on every start: keep retrying after a network-less boot.
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/local/bin/tailhome
+DynamicUser=yes
+StateDirectory=tailhome
+ConfigurationDirectory=tailhome
+Environment=TAILHOME_STATE_DIR=/var/lib/tailhome
+Environment=TAILHOME_OVERRIDES=/etc/tailhome/overrides.yaml
+EnvironmentFile=/etc/tailhome/env
+Restart=on-failure
+RestartSec=10s
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
