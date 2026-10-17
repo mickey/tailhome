@@ -17,15 +17,14 @@ Type `http://home/` in your browser to see every Service on your tailnet, groupe
 - **Nothing to maintain.** Services come from the Tailscale API, groups from their tags, icons from [dashboard-icons](https://github.com/homarr-labs/dashboard-icons). Define a new Service and it shows up on the next refresh.
 - **One binary, no Tailscale on the host.** tailhome joins your tailnet on its own through [tsnet](https://tailscale.com/docs/features/tsnet).
 - **Real health checks.** Each Service is checked from inside the tailnet, so a green dot means you can actually reach it.
-- **Optional overrides.** A small YAML file renames, regroups, reorders or hides Services, without a restart.
 
-tailhome is a **launcher, not a dashboard**: no widgets, no feeds. For those, use [Homepage](https://gethomepage.dev) or [Glance](https://github.com/glanceapp/glance). It pairs well with [tsdproxy](https://github.com/almeidapaulopt/tsdproxy).
+tailhome is a **launcher, not a dashboard**: no widgets, no feeds. For those, use [Homepage](https://gethomepage.dev) or [Glance](https://github.com/glanceapp/glance). To publish Docker containers as Services, see [With DockTail or TSDProxy](#with-docktail-or-tsdproxy).
 
 ---
 
 ## Quick start
 
-> **Prerequisites:** Tailscale 1.86 or later on the devices you browse from, and **MagicDNS** plus **HTTPS Certificates** turned on in the [DNS settings](https://console.tailscale.com/admin/dns).
+> **Prerequisites:** admin access to your tailnet, Tailscale 1.86 or later on the devices you browse from, and **MagicDNS** plus **HTTPS Certificates** turned on in the [DNS settings](https://console.tailscale.com/admin/dns).
 
 ### 1. Set up Tailscale (once)
 
@@ -53,11 +52,7 @@ tailhome is a **launcher, not a dashboard**: no widgets, no feeds. For those, us
 
 2. **Define the `home` Service:** on the [Services](https://console.tailscale.com/admin/services) page, select **Advertise → Define a Service**, name it `home`, enter the ports `443,80`, leave the tags empty, and select **Define Service**.
 
-3. **Create an OAuth client:** in [Trust credentials](https://console.tailscale.com/admin/settings/trust-credentials), add a credential with custom scopes:
-   - **General → Services → Read**, to list your Services
-   - **Keys → Auth Keys → Write** with the tag `tag:tailhome`, to join the tailnet
-
-   Copy the client ID and secret: the secret is shown only once.
+3. **Create an OAuth client:** in [Trust credentials](https://console.tailscale.com/admin/settings/trust-credentials), add a credential with the custom scopes **General → Services → Read**, to list your Services, and **Keys → Auth Keys → Write** with the tag `tag:tailhome`, to join the tailnet. Copy the client ID and secret: the secret is shown only once.
 
 ### 2. Run tailhome
 
@@ -89,19 +84,18 @@ volumes:
 docker compose up -d
 ```
 
-Open `http://home/` from any device on your tailnet. Keep the trailing slash, or your browser may search for "home".
+Once `docker compose logs` shows `serving https://home.<tailnet>.ts.net`, open `http://home/` from any device on your tailnet. Keep the trailing slash, or your browser may search for "home".
 
 <details>
 <summary><strong>Without Docker: binary, Go or systemd</strong></summary>
 
-Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or build one with Go 1.27 or later:
+Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or build one with Go 1.27.2 or later:
 
 ```sh
 go install github.com/mickey/tailhome@latest
 
 TAILHOME_CLIENT_ID='your-client-id' \
 TAILHOME_CLIENT_SECRET='tskey-client-your-secret' \
-TAILHOME_STATE_DIR="$HOME/.local/share/tailhome" \
 tailhome
 ```
 
@@ -120,7 +114,7 @@ The unit keeps state in `/var/lib/tailhome` and reads overrides from `/etc/tailh
 </details>
 
 > [!NOTE]
-> Keep the state directory (`/data` in Docker) and the OAuth client. Without the state, tailhome joins as a new node and the old one stays in the admin console. The OAuth client lets tailhome join the first time, then list Services on every refresh.
+> Keep the state directory (`/data` in Docker) and the OAuth client. Without the state, tailhome joins as a new node and the old one stays in the admin console. Without the client, it can't list Services.
 
 ---
 
@@ -133,46 +127,48 @@ Out of the box, tailhome takes everything from Tailscale:
 | Label | The Service's display name, or its name in title case |
 | Description | The Service's description |
 | Group | Its first tag: `tag:home-lab` becomes "Home Lab". Untagged Services go under "Services". |
-| Icon | The matching [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) entry, or the label's first letter |
+| Icon | The [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) entry named after the Service, or the label's first letter |
 
-To change that, write an `overrides.yaml`. Every field is optional ([full example](overrides.example.yaml)):
+To change that, write an `overrides.yaml`. Every field is optional, and [`overrides.example.yaml`](overrides.example.yaml) lists them all:
 
 ```yaml
 jellyfin:
   group: Media
   order: -1                 # lower sorts first; unset counts as 0, ties sort by label
 grafana:
-  label: Monitoring
-  description: Dashboards
+  label: Grafana
   icon: grafana             # a dashboard-icons name, or a full image URL
   url: https://grafana.example.ts.net/d/main
 nas:
   url: vnc://nas.example.ts.net:5900   # also ssh, rdp, smb, ftp, sftp, telnet
-pgadmin:
-  web: false                # list it under "Other" instead of as a tile
 postgres:
   hidden: true
 ```
 
-Where it goes:
+In Docker, copy it into the volume with `docker compose cp overrides.yaml tailhome:/data/`; the file must be readable by everyone (`chmod 644`). The binary reads it from the directory you start it in. Set `TAILHOME_OVERRIDES` to put it anywhere else.
 
-- **Docker:** copy it into the volume with `docker compose cp overrides.yaml tailhome:/data/`. The file must be readable by everyone (`chmod 644`).
-- **Binary:** in the directory you start tailhome from.
-- **Anywhere else:** set `TAILHOME_OVERRIDES` to its path.
+tailhome rereads the file on every refresh. Keys are Service names, with or without `svc:`. An unknown field makes the refresh fail. A key that matches no Service is ignored, with a warning in the logs.
 
-tailhome rereads the file on every refresh. Keys are Service names, with or without `svc:`. An unknown field makes the refresh fail: the page shows the error and keeps the last good list. A key that matches no Service is ignored, with a warning in the logs.
+### With DockTail or TSDProxy
+
+tailhome lists Services, not devices. [DockTail](https://github.com/marvinvr/docktail) and [TSDProxy](https://github.com/almeidapaulopt/tsdproxy) v3 (`services: true`) publish containers as Services. TSDProxy v2, [tsbridge](https://github.com/jtdowney/tsbridge) and [ScaleTail](https://github.com/tailscale-dev/ScaleTail) create one device per app, which tailhome doesn't see.
+
+- **Groups.** DockTail tags Services `tag:container` by default and TSDProxy gives them all the same tags, so they share one group. Set `docktail.tags` per container (each tag needs `tagOwners` and `autoApprovers` entries), or `group` overrides.
+- **Labels.** These tools set no display name and may clear one set in the admin console: use `label` overrides.
+- **Descriptions.** `docktail.service.description` shows on the tile.
+- **Paths.** The tile opens `/`, since the API doesn't expose `docktail.service.path`: set `url`.
+- **Stopped containers.** DockTail keeps their Service, so the tile stays red: set `DELETE_UNUSED_SERVICES=true` in DockTail, or `hidden: true`. TSDProxy deletes it.
 
 ---
 
 ## How it works
 
-- **Tiles and "Other".** A Service becomes a clickable tile when it listens on port 443 or 80, has a `url` or `web: true` override, or answers HTTP on its first port. A Service without a usable port (such as `do-not-validate`) is tried on 443, then 80. Everything else, such as a database, goes under "Other": click it to copy its address.
+- **Tiles and "Other".** A Service becomes a clickable tile when it listens on port 443 or 80, has a `url` or `web: true` override, or answers HTTP on its first port. A Service without a usable port (such as `do-not-validate`) is tried on 443, then 80. A Service that is down when tailhome starts waits under "Other" until it first answers. Everything else, such as a database, goes under "Other": click it to copy its hostname.
 - **Health.**
   - **Green:** an HTTP answer below 500, redirects included. For "Other" and for non-HTTP links (`ssh://`, `vnc://`), a TCP connection that succeeds.
   - **Red:** the check failed. Hover the dot to see why. A tile that goes down stays in its group.
   - **Grey:** nothing to check, such as a Service with no TCP port.
-- **Unusual ports.** A Service on another port becomes a tile the first time it answers HTTP. If it's down when tailhome starts, it sits under "Other" until then.
-- **Refresh.** tailhome reloads the list and rechecks every Service every 5 minutes. The **refresh** link does it now, at most once every 10 seconds. If the Tailscale API fails, the page keeps the last list and shows the error.
+- **Refresh.** tailhome reloads the list and rechecks every Service every 5 minutes. The **refresh** link does it now, at most once every 10 seconds. If a refresh fails, because of the Tailscale API or the overrides file, the page keeps the last list and shows the error.
 - **JSON.** `/api/services.json` returns the same data as the page.
 
 ---
@@ -190,7 +186,7 @@ tailhome rereads the file on every refresh. Keys are Service names, with or with
 | `TAILHOME_TAG` | `tag:tailhome` | Tag of the tailhome node |
 | `TAILHOME_HOSTNAME` | `tailhome` | Node name in the tailnet |
 | `TAILHOME_TAILNET` | the OAuth client's tailnet | Tailnet to list |
-| `TS_AUTHKEY` | unset | Auth key to join with, instead of minting one. It must allow `tag:tailhome`. The OAuth client is still needed to list Services. |
+| `TS_AUTHKEY` | unset | Auth key to join with, instead of minting one. It must allow `tag:tailhome`. |
 | `TS_NO_LOGS_NO_SUPPORT` | unset | Set to `true` to stop uploading tsnet diagnostic logs to Tailscale |
 
 ---
@@ -206,8 +202,7 @@ tailhome rereads the file on every refresh. Keys are Service names, with or with
 | The first HTTPS load is slow or times out | The certificate is being issued. Retry in a minute. |
 | tailhome exits with `joining the tailnet: creating an auth key for tag:tailhome: …` | The OAuth client lacks Auth Keys: Write for `tag:tailhome`, or the tag is missing from `tagOwners`. |
 | "Refresh failed: …" mentioning `oauth2` or `403` | The OAuth client lacks the Services: Read scope. |
-| Every dot is red | Your policy doesn't let `tag:tailhome` reach your Services: add the grants from step 1. Hover a dot for details. |
-| One dot is red but the Service opens fine | Your policy doesn't let `tag:tailhome` reach that Service. |
+| A dot is red but the Service opens fine | Your policy doesn't let `tag:tailhome` reach that Service: add the grants from step 1. |
 
 ---
 
@@ -217,10 +212,4 @@ tailhome rereads the file on every refresh. Keys are Service names, with or with
 - **Icons.** Browsers load icons from `cdn.jsdelivr.net`, which reveals Service names to jsDelivr. Set `icon` overrides to your own URLs to avoid it.
 - **Logs.** Like any Tailscale node, tailhome uploads diagnostic logs to Tailscale. Set `TS_NO_LOGS_NO_SUPPORT=true` to turn that off.
 
-Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
-
-## Contributing and license
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Run the tests with `go test -race ./...`.
-
-tailhome is released under the [MIT license](LICENSE).
+Report vulnerabilities as described in [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). tailhome is released under the [MIT license](LICENSE).
