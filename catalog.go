@@ -11,12 +11,33 @@ import (
 	"sync"
 	"time"
 
+	"tailscale.com/client/local"
 	tsapi "tailscale.com/client/tailscale/v2"
 )
 
-// ServiceLister is implemented by *tsapi.ServicesResource.
+// ServiceLister is implemented by *tsapi.ServicesResource and localServices.
 type ServiceLister interface {
 	List(ctx context.Context) ([]tsapi.Service, error)
+}
+
+// localServices lists the Services this node may reach, as its netmap reports
+// them. It needs no API credentials but sees no tags or descriptions.
+type localServices struct{ lc *local.Client }
+
+func (l localServices) List(ctx context.Context) ([]tsapi.Service, error) {
+	details, err := l.lc.GetServices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	services := make([]tsapi.Service, 0, len(details))
+	for _, d := range details {
+		ports := make([]string, len(d.Ports))
+		for i, p := range d.Ports {
+			ports[i] = p.String()
+		}
+		services = append(services, tsapi.Service{Name: string(d.Name), DisplayName: d.DisplayName, Ports: ports})
+	}
+	return services, nil
 }
 
 type Status string
@@ -177,8 +198,11 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 		}
 		entries = append(entries, e)
 	}
-	if !selfFound {
+	if c.Self != "" && !selfFound {
 		c.warnOnce("self", "warning: %s is not defined in the admin console (Services → Advertise → Define a Service), so the page is unreachable", c.Self)
+	}
+	if len(services) == 0 {
+		c.warnOnce("empty", "warning: no Services to list: define some on the Services page of the admin console; without an OAuth client, also check that your policy lets this node reach them")
 	}
 	for name := range overrides {
 		if !slices.ContainsFunc(services, func(s tsapi.Service) bool { return s.Name == "svc:"+name }) {

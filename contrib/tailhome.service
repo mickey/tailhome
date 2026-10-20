@@ -2,7 +2,7 @@
 Description=tailhome start page for Tailscale Services
 Wants=network-online.target
 After=network-online.target
-# tailhome contacts the Tailscale API on every start: keep retrying after a network-less boot.
+# tailhome needs the network on every start: keep retrying after a network-less boot.
 StartLimitIntervalSec=0
 
 [Service]
