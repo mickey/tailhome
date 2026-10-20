@@ -4,8 +4,10 @@ services:
     env_file: [{ path: .env, required: false }] # optional OAuth client, see .env.example
     environment:
       TZ: Etc/UTC # your time zone, for the "updated" time
+      TAILHOME_OVERRIDES: /config/overrides.yaml
     volumes:
       - tailhome-data:/data
+      - ./config:/config:ro # put overrides.yaml here
     restart: unless-stopped
 
 volumes:
