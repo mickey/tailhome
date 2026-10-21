@@ -1,0 +1,80 @@
+name: Setup problem
+description: tailhome doesn't start, or the page is empty or unreachable.
+title: "Setup: "
+labels: [setup]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying tailhome. Check [Troubleshooting](https://github.com/mickey/tailhome#troubleshooting) first: it covers the common causes.
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Without credentials (login link or auth key)
+        - With an OAuth client
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: What happens?
+      options:
+        - tailhome exits or never logs "serving https://…"
+        - The page doesn't load
+        - The page loads but lists no Services
+        - Some Services are missing or red
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: tailhome-version
+    attributes:
+      label: tailhome version
+      description: The first log line, such as "tailhome v0.2.0".
+    validations:
+      required: true
+
+  - type: input
+    id: tailscale-version
+    attributes:
+      label: Tailscale version on the device you browse from
+      description: Run `tailscale version`.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run tailhome?
+      options: [Docker Compose, Docker, Binary, systemd, Other]
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The first 30 lines, from `docker compose logs tailhome` or `journalctl -u tailhome`.
+        Replace your tailnet name and the login link with "…". tailhome never logs credentials.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: services
+    attributes:
+      label: Services
+      description: What `tailscale service list` shows on the device you browse from, if your Tailscale has that command (1.102 or later).
+      render: text
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else
+      description: What you expected, and what you tried.
