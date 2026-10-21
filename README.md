@@ -60,7 +60,7 @@ Open the login link in the logs to add tailhome to your tailnet. When the logs s
 
 tailhome joins under your account as a device named `home`:
 
-- **Disable key expiry** on the [Machines](https://console.tailscale.com/admin/machines) page. Untagged nodes expire after 180 days by default; tailhome logs the expiry date.
+- **Disable key expiry** on the [Machines](https://console.tailscale.com/admin/machines) page. Untagged nodes expire after 180 days by default; the page shows the date until you disable it.
 - **Check the address in the logs.** If a device or Service already uses `home`, Tailscale assigns another name, such as `home-1`.
 
 To skip browser login, set `TS_AUTHKEY` to an [auth key](https://console.tailscale.com/admin/settings/keys). A tagged key also avoids key expiry, but its tag needs a `tagOwners` entry.
@@ -68,7 +68,7 @@ To skip browser login, set `TS_AUTHKEY` to an [auth key](https://console.tailsca
 <details>
 <summary><strong>Without Docker: binary, Go or systemd</strong></summary>
 
-Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or install it with Go 1.27.2 or later:
+Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or install it with Go 1.27.3 or later:
 
 ```sh
 go install github.com/mickey/tailhome@latest
@@ -102,7 +102,8 @@ The unit stores state in `/var/lib/tailhome` and reads `/etc/tailhome/overrides.
   - **Red:** the check failed. Hover over the dot for the reason. A tile that goes down stays in its group.
   - **Grey:** nothing to check, such as a Service with no TCP port.
 - **Refresh.** tailhome reloads and checks Services every 5 minutes. Select **refresh** to check now, at most once every 10 seconds. If discovery or overrides fail, the page keeps the last list and shows the error.
-- **JSON.** `/api/services.json` returns the same data as the page.
+- **Notices.** Without credentials, the page warns when the node's key will expire or when the node got another name, such as `home-1`. It rechecks both on every refresh.
+- **JSON.** `/api/services.json` returns the same data as the page, notices included.
 
 ---
 
@@ -230,7 +231,7 @@ Without Docker, set the same two variables before starting tailhome.
 
 | Symptom | Cause and next step |
 |---|---|
-| The page lists no Services | tailhome lists Services, not machines. Define Services and allow the node to reach them. If the tailnet doesn't yet share Services with nodes, use an OAuth client. |
+| The page lists no Services | It shows what to check: tailhome lists Services, not machines, and the node must be allowed to reach them. If the tailnet doesn't yet share Services with nodes, use an OAuth client. |
 | `home/` doesn't load | Without OAuth, check the logged address for a name such as `home-1`. With OAuth, define `svc:home` (step 2), add `autoApprovers`, or approve its host on the Services page. Logs warn if the Service is missing. |
 | `home/` doesn't resolve on one device | Enable MagicDNS and use Tailscale 1.86 or later. On Linux before 1.94, run `sudo tailscale set --accept-routes`. |
 | `https://home/` won't connect | HTTPS requires the full name. Open `http://home/` to redirect there. |
