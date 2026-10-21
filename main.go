@@ -19,6 +19,7 @@ import (
 	"time"
 
 	tsapi "tailscale.com/client/tailscale/v2"
+	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
 	"tailscale.com/util/dnsname"
 )
@@ -110,6 +111,7 @@ func run() error {
 		httpsLn, httpLn net.Listener
 		fqdn, self      string
 		services        ServiceLister
+		notices         func(context.Context) []Notice
 	)
 	if apiMode {
 		self = env("TAILHOME_SERVICE", "svc:home")
@@ -133,18 +135,27 @@ func run() error {
 			return fmt.Errorf("listening on port 80: %w", err)
 		}
 		fqdn = srv.CertDomains()[0] // ListenTLS fails when there is none
-		name, _, _ := strings.Cut(fqdn, ".")
-		if !strings.EqualFold(name, dnsname.SanitizeHostname(srv.Hostname)) {
-			log.Printf("warning: the tailnet named this node %s, not %s: another device or Service has that name, or someone renamed it. Open http://%s/ instead", name, srv.Hostname, name)
-		}
-		if t := st.Self.KeyExpiry; t != nil {
-			log.Printf("warning: this node's key expires on %s and the page goes offline with it: disable key expiry for %s on the Machines page of the admin console", t.Format(time.DateOnly), name)
-		}
 		lc, err := srv.LocalClient()
 		if err != nil {
 			return err
 		}
 		services = localServices{lc}
+		hostname := srv.Hostname
+		for _, n := range nodeNotices(st.Self, hostname) {
+			if n.URL != "" {
+				log.Printf("warning: %s %s on %s", n.Text, n.LinkText, n.URL)
+			} else {
+				log.Printf("warning: %s", n.Text)
+			}
+		}
+		// Rechecked on every refresh, so fixing the problem clears the notice.
+		notices = func(ctx context.Context) []Notice {
+			st, err := lc.StatusWithoutPeers(ctx)
+			if err != nil {
+				return nil
+			}
+			return nodeNotices(st.Self, hostname)
+		}
 	}
 	defer httpsLn.Close()
 	defer httpLn.Close()
@@ -157,6 +168,8 @@ func run() error {
 		DNSSuffix:     dnsSuffix,
 		Self:          self,
 		Prober:        NewProber(srv.Dial),
+		Local:         !apiMode,
+		Notices:       notices,
 	}
 	go catalog.Run(ctx, refresh)
 
@@ -185,4 +198,25 @@ func redirectTo(base string) http.Handler {
 
 func env(key, fallback string) string {
 	return cmp.Or(os.Getenv(key), fallback)
+}
+
+// nodeNotices reports problems with this node that the admin can fix: a name
+// other than the one asked for, and a key that will expire.
+func nodeNotices(self *ipnstate.PeerStatus, hostname string) []Notice {
+	if self == nil {
+		return nil
+	}
+	var notices []Notice
+	name, _, _ := strings.Cut(self.DNSName, ".")
+	if name != "" && !strings.EqualFold(name, dnsname.SanitizeHostname(hostname)) {
+		notices = append(notices, Notice{Text: fmt.Sprintf("This page is at http://%s/ because %s is taken or this node was renamed.", name, hostname)})
+	}
+	if t := self.KeyExpiry; t != nil {
+		notices = append(notices, Notice{
+			Text:     fmt.Sprintf("This page goes offline on %s, when this node's key expires.", t.Format(time.DateOnly)),
+			LinkText: "Disable key expiry for " + cmp.Or(name, hostname),
+			URL:      "https://console.tailscale.com/admin/machines",
+		})
+	}
+	return notices
 }

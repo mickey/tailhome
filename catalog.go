@@ -48,6 +48,13 @@ const (
 	StatusDown    Status = "down"
 )
 
+// Notice is a setup problem worth showing on the page, with a link to fix it.
+type Notice struct {
+	Text     string `json:"text"`
+	LinkText string `json:"linkText,omitempty"`
+	URL      string `json:"url,omitempty"`
+}
+
 type Entry struct {
 	Name        string   `json:"name"`
 	Label       string   `json:"label"`
@@ -74,6 +81,7 @@ type View struct {
 	Other   []Entry   `json:"other"`
 	Updated time.Time `json:"updated"`
 	Error   string    `json:"error,omitempty"`
+	Notices []Notice  `json:"notices,omitempty"`
 }
 
 func (v View) all() []Entry {
@@ -90,6 +98,8 @@ type Catalog struct {
 	DNSSuffix     string
 	Self          string // own Service, left off the page
 	Prober        *Prober
+	Local         bool                           // listing from the netmap, without API credentials
+	Notices       func(context.Context) []Notice // setup problems, rechecked on every refresh; may be nil
 
 	refreshMu   sync.Mutex        // serializes refreshes; guards detected, lastAttempt, warned
 	detected    map[string]string // Service name → URL that once answered HTTP
@@ -220,6 +230,9 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 		prev[e.Name] = e.Status
 	}
 	view := View{Groups: []Group{}, Other: []Entry{}, Updated: time.Now()}
+	if c.Notices != nil {
+		view.Notices = c.Notices(ctx)
+	}
 	detected := map[string]string{}
 	groups := map[string][]Entry{}
 	for _, e := range entries {

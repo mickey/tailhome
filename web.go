@@ -45,8 +45,9 @@ func NewHandler(c *Catalog, title string) http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data := struct {
 			Title string
+			Local bool
 			View
-		}{title, c.View()}
+		}{title, c.Local, c.View()}
 		if err := page.Execute(w, data); err != nil {
 			log.Printf("render: %v", err)
 		}

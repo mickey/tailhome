@@ -15,6 +15,7 @@ import (
 	"time"
 
 	tsapi "tailscale.com/client/tailscale/v2"
+	"tailscale.com/ipn/ipnstate"
 )
 
 type fakeLister struct {
@@ -293,6 +294,62 @@ db:
 	}
 	if !strings.Contains(body, "Main database") {
 		t.Error("description of an Other entry not rendered")
+	}
+}
+
+func TestEmptyPageGuidance(t *testing.T) {
+	render := func(c *Catalog) string {
+		c.Refresh(t.Context())
+		rec := httptest.NewRecorder()
+		NewHandler(c, "home").ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+		return rec.Body.String()
+	}
+	const policyHint = "your policy lets this node reach them"
+
+	local := newCatalog(&fakeLister{}, &fakeNet{}, "")
+	local.Local = true
+	notices := []Notice{{Text: "expires <soon>", LinkText: "Open the Machines page", URL: "https://console.tailscale.com/admin/machines"}}
+	local.Notices = func(context.Context) []Notice { return notices }
+	body := render(local)
+	if !strings.Contains(body, "No Services yet") || !strings.Contains(body, policyHint) {
+		t.Errorf("local empty page lacks its guidance: %s", body)
+	}
+	if !strings.Contains(body, "expires &lt;soon&gt;") || !strings.Contains(body, `<a href="https://console.tailscale.com/admin/machines">Open the Machines page</a>`) {
+		t.Errorf("notice not rendered escaped with its link: %s", body)
+	}
+
+	if body := render(newCatalog(&fakeLister{}, &fakeNet{}, "")); !strings.Contains(body, "No Services yet") || strings.Contains(body, policyHint) {
+		t.Errorf("OAuth empty page: want guidance without the local-mode hints: %s", body)
+	}
+	if body := render(newCatalog(&fakeLister{err: errors.New("api down")}, &fakeNet{}, "")); strings.Contains(body, "No Services yet") {
+		t.Error("empty-state guidance shown over a refresh error")
+	}
+	listed := &fakeLister{services: []tsapi.Service{{Name: "svc:db", Ports: []string{"tcp:5432"}}}}
+	if body := render(newCatalog(listed, &fakeNet{}, "")); strings.Contains(body, "No Services yet") {
+		t.Error("empty-state guidance shown with Services listed")
+	}
+}
+
+func TestNoticesClearAfterFix(t *testing.T) {
+	expiry := time.Date(2027, 4, 18, 0, 0, 0, 0, time.UTC)
+	self := &ipnstate.PeerStatus{DNSName: "home-1.tn.ts.net.", KeyExpiry: &expiry}
+	if got := nodeNotices(self, "home"); len(got) != 2 || !strings.Contains(got[0].Text, "http://home-1/") || !strings.Contains(got[1].Text, "2027-04-18") {
+		t.Fatalf("renamed, expiring node: got %+v", got)
+	}
+	if got := nodeNotices(&ipnstate.PeerStatus{DNSName: "home.tn.ts.net."}, "home"); len(got) != 0 {
+		t.Errorf("node with its name and no expiry: got %+v", got)
+	}
+
+	c := newCatalog(&fakeLister{}, &fakeNet{}, "")
+	c.Notices = func(context.Context) []Notice { return nodeNotices(self, "home") }
+	c.Refresh(t.Context())
+	if n := len(c.View().Notices); n != 2 {
+		t.Fatalf("before the fix: %d notices, want 2", n)
+	}
+	self = &ipnstate.PeerStatus{DNSName: "home-1.tn.ts.net."} // expiry disabled in the admin console
+	c.Refresh(t.Context())
+	if got := c.View().Notices; len(got) != 1 || strings.Contains(got[0].Text, "expires") {
+		t.Errorf("after disabling expiry: got %+v, want only the name notice", got)
 	}
 }
 

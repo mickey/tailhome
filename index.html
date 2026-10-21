@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --down: #d1453b; --unknown: #a3a39c; }
+  :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --down: #d1453b; --unknown: #a3a39c; --warn: #c88a12; }
   @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; } }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
@@ -17,6 +17,15 @@
   .meta { color: var(--muted); font-size: 13px; }
   .meta a { text-decoration: underline; }
   .error { background: color-mix(in srgb, var(--down) 12%, var(--card)); border: 1px solid var(--down); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
+  .notices { list-style: none; margin: 0 0 20px; padding: 0; font-size: 14px; }
+  .notices li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; }
+  .notices li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); transform: translateY(-1px); }
+  .notices a, .empty a { text-decoration: underline; text-underline-offset: 2px; }
+  .empty { max-width: 560px; margin-top: 48px; }
+  .empty h2 { font-size: 18px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--fg); margin: 0 0 6px; }
+  .empty p { margin: 0 0 16px; color: var(--muted); }
+  .empty ul { margin: 0 0 16px; padding-left: 20px; }
+  .empty li { margin: 6px 0; padding-left: 4px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
   .tile { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
   a.tile:hover { border-color: var(--muted); }
@@ -41,6 +50,7 @@
     <span class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<a href="/?refresh">refresh</a></span>
   </header>
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
+  {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}
   {{range .Groups}}
   <h2>{{.Name}}</h2>
   <div class="grid">
@@ -65,7 +75,21 @@
     {{end}}
   </div>
   {{end}}
-  {{if and (not .Groups) (not .Other) (not .Error)}}<p class="meta">No Services yet.</p>{{end}}
+  {{if and (not .Groups) (not .Other) (not .Error)}}
+  <section class="empty">
+    <h2>No Services yet</h2>
+    <p>tailhome shows <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Services</a>, not machines.</p>
+    <ul>
+      <li><a href="https://console.tailscale.com/admin/services">Define a Service</a> and give it a host.</li>
+      <li>Or publish Docker containers with <a href="https://github.com/marvinvr/docktail">DockTail</a>.</li>
+      {{if .Local}}
+      <li>Already have Services? Check that your policy lets this node reach them.</li>
+      <li>Still empty? <a href="https://github.com/mickey/tailhome#groups-and-descriptions">Set up an OAuth client</a> to list them through the API.</li>
+      {{end}}
+    </ul>
+    <p class="meta">New Services appear within a few minutes.</p>
+  </section>
+  {{end}}
 </main>
 <script>
   document.addEventListener("click", async (ev) => {
