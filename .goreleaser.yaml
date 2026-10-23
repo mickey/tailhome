@@ -41,7 +41,6 @@ checksum:
 dockers_v2:
   - images:
       - ghcr.io/mickey/tailhome
-    dockerfile: Dockerfile.goreleaser
     ids:
       - tailhome
     platforms:

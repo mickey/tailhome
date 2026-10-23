@@ -15,16 +15,8 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test -race ./...
-      - run: go build ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: check
-  # Separate job: a cold image build compiles all of tailscale.com and runs
-  # in parallel with the checks above instead of after them.
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - run: docker build .

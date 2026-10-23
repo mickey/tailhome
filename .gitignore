@@ -2,6 +2,7 @@
 /dist/
 /data/
 /overrides.yaml
+/config/
 .env
 .herdr-web-ui/
 .impeccable/
