@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"html/template"
 	"log"
@@ -12,9 +12,9 @@ import (
 )
 
 //go:embed index.html
-var assets embed.FS
+var indexHTML string
 
-var page = template.Must(template.New("index.html").Funcs(template.FuncMap{"link": link}).ParseFS(assets, "index.html"))
+var page = template.Must(template.New("index.html").Funcs(template.FuncMap{"link": link}).Parse(indexHTML))
 
 // linkSchemes extends html/template's http, https and mailto with launcher links.
 var linkSchemes = map[string]bool{

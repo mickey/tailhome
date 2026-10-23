@@ -52,16 +52,18 @@ func (p *Prober) Check(ctx context.Context, entries []Entry) {
 
 func (p *Prober) check(ctx context.Context, e *Entry) {
 	if e.probe == nil {
-		switch {
-		case e.URL == "":
+		if e.URL == "" {
 			e.Status, e.Reason = p.tcpCheck(ctx, e.Host, e.Ports)
-		case isHTTP(e.URL):
+			return
+		}
+		u, err := url.Parse(e.URL)
+		switch {
+		case err == nil && (u.Scheme == "http" || u.Scheme == "https"):
 			_, e.Status, e.Reason = p.httpCheck(ctx, e.URL)
-		default: // e.g. a vnc:// or ssh:// override
-			e.Status, e.Reason = p.urlTCPCheck(ctx, e.URL)
-			if e.Status == StatusUnknown { // link has no port: check the Service's own
-				e.Status, e.Reason = p.tcpCheck(ctx, e.Host, e.Ports)
-			}
+		case err == nil && u.Port() != "": // e.g. a vnc://host:5900 override
+			e.Status, e.Reason = p.dialCheck(ctx, u.Host)
+		default: // a link without a port, such as ssh://host: check the Service's own
+			e.Status, e.Reason = p.tcpCheck(ctx, e.Host, e.Ports)
 		}
 		return
 	}
@@ -124,14 +126,6 @@ func (p *Prober) tcpCheck(ctx context.Context, host string, ports []string) (Sta
 	return p.dialCheck(ctx, net.JoinHostPort(host, port))
 }
 
-func (p *Prober) urlTCPCheck(ctx context.Context, raw string) (Status, string) {
-	u, err := url.Parse(raw)
-	if err != nil || u.Port() == "" {
-		return StatusUnknown, "no port to check in " + raw
-	}
-	return p.dialCheck(ctx, u.Host)
-}
-
 func (p *Prober) dialCheck(ctx context.Context, addr string) (Status, string) {
 	conn, err := p.dial(ctx, "tcp", addr)
 	if err != nil {
@@ -139,9 +133,4 @@ func (p *Prober) dialCheck(ctx context.Context, addr string) (Status, string) {
 	}
 	conn.Close()
 	return StatusUp, ""
-}
-
-func isHTTP(raw string) bool {
-	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }

@@ -46,10 +46,6 @@ func (n *fakeNet) dial(ctx context.Context, network, addr string) (net.Conn, err
 	return d.DialContext(ctx, network, local)
 }
 
-func (n *fakeNet) prober() *Prober {
-	return NewProber(n.dial)
-}
-
 func serveHTTP(t *testing.T, status int) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
@@ -64,7 +60,8 @@ func serveHTTPS(t *testing.T) string {
 	return srv.Listener.Addr().String()
 }
 
-func serveTCP(t *testing.T) string {
+// listen accepts connections on a local port and hands each to accept.
+func listen(t *testing.T, accept func(net.Conn)) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -77,10 +74,22 @@ func serveTCP(t *testing.T) string {
 			if err != nil {
 				return
 			}
-			c.Close()
+			accept(c)
 		}
 	}()
 	return ln.Addr().String()
+}
+
+func serveTCP(t *testing.T) string {
+	t.Helper()
+	return listen(t, func(c net.Conn) { c.Close() })
+}
+
+// serveSilent reads forever without answering, like DNS over TCP waiting for
+// the rest of a length-prefixed query.
+func serveSilent(t *testing.T) string {
+	t.Helper()
+	return listen(t, func(c net.Conn) { go io.Copy(io.Discard, c) })
 }
 
 func writeOverrides(t *testing.T, yaml string) string {
@@ -98,7 +107,7 @@ func newCatalog(lister ServiceLister, n *fakeNet, overrides string) *Catalog {
 		OverridesPath: overrides,
 		DNSSuffix:     "ts.test",
 		Self:          "svc:home",
-		Prober:        n.prober(),
+		Prober:        NewProber(n.dial),
 	}
 }
 
@@ -151,7 +160,7 @@ func TestClassificationAndHealth(t *testing.T) {
 		// SSH next to a web port: still probed for HTTP on its first port.
 		{Name: "svc:gitea", Ports: []string{"tcp:22", "tcp:3000"}},
 	}}
-	c := newCatalog(lister, n, filepath.Join(t.TempDir(), "missing.yaml"))
+	c := newCatalog(lister, n, "")
 	c.Refresh(t.Context())
 
 	entries, sections := index(c.View())
@@ -488,27 +497,6 @@ db:
 	}
 }
 
-// serveSilent accepts connections and reads forever without answering, like
-// DNS over TCP waiting for the rest of what it takes for a length-prefixed query.
-func serveSilent(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { ln.Close() })
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go io.Copy(io.Discard, c)
-		}
-	}()
-	return ln.Addr().String()
-}
-
 func TestSilentDaemonIsUpUnderOther(t *testing.T) {
 	n := &fakeNet{addrs: map[string]string{"dns.ts.test:53": serveSilent(t)}}
 	c := newCatalog(&fakeLister{services: []tsapi.Service{{Name: "svc:dns", Ports: []string{"tcp:53"}}}}, n, "")
@@ -546,7 +534,7 @@ func TestUnreachableServiceSharesOneTimeout(t *testing.T) {
 
 	start := time.Now()
 	p.Check(t.Context(), entries)
-	// Three attempts (https, http, tcp) must share the budget, not get one each.
+	// The tcp, https and http attempts must share the budget, not get one each.
 	if elapsed := time.Since(start); elapsed > 400*time.Millisecond {
 		t.Fatalf("check took %v, want about 200ms", elapsed)
 	}
