@@ -127,6 +127,10 @@ func TestClassificationAndHealth(t *testing.T) {
 		"ranged.ts.test:8000":   serveHTTP(t, 200),
 		"wildcard.ts.test:443":  serveHTTPS(t),
 		"console.ts.test:80":    serveHTTP(t, 200),
+		"shell.ts.test:22":      serveTCP(t),
+		"screen.ts.test:5900":   serveTCP(t),
+		"gitea.ts.test:22":      serveTCP(t),
+		"gitea.ts.test:3000":    serveHTTP(t, 200),
 		// "offline.ts.test:80" is unreachable.
 	}}
 	lister := &fakeLister{services: []tsapi.Service{
@@ -142,6 +146,10 @@ func TestClassificationAndHealth(t *testing.T) {
 		{Name: "svc:ranged", Ports: []string{"udp:53", "tcp:8000-8010"}},
 		{Name: "svc:wildcard", Ports: []string{"tcp:*"}},
 		{Name: "svc:console", Ports: []string{"do-not-validate"}},
+		{Name: "svc:shell", Ports: []string{"tcp:22"}},
+		{Name: "svc:screen", Ports: []string{"tcp:5900"}},
+		// SSH next to a web port: still probed for HTTP on its first port.
+		{Name: "svc:gitea", Ports: []string{"tcp:22", "tcp:3000"}},
 	}}
 	c := newCatalog(lister, n, filepath.Join(t.TempDir(), "missing.yaml"))
 	c.Refresh(t.Context())
@@ -169,6 +177,10 @@ func TestClassificationAndHealth(t *testing.T) {
 		{"wildcard", "Services", "https://wildcard.ts.test/", StatusUp},
 		// Without a usable port, the default web ports are probed.
 		{"console", "Services", "http://console.ts.test/", StatusUp},
+		// SSH and VNC are not web: they land under Other, checked over TCP.
+		{"shell", "Other", "", StatusUp},
+		{"screen", "Other", "", StatusUp},
+		{"gitea", "Other", "", StatusUp},
 	}
 	for _, w := range want {
 		e, ok := entries[w.name]
@@ -182,6 +194,19 @@ func TestClassificationAndHealth(t *testing.T) {
 	}
 	if _, ok := entries["home"]; ok {
 		t.Error("own Service shown")
+	}
+	// What a click copies under Other: a connection string for well-known
+	// ports, else the hostname.
+	for name, want := range map[string]string{
+		"shell":    "ssh shell.ts.test",
+		"screen":   "vnc://screen.ts.test",
+		"postgres": "postgres://postgres.ts.test:5432/",
+		"redis":    "redis://redis.ts.test:6379",
+		"gitea":    "gitea.ts.test", // two ports: no single connection string
+	} {
+		if got := entries[name].Copy; got != want {
+			t.Errorf("%s copies %q, want %q", name, got, want)
+		}
 	}
 }
 
@@ -311,6 +336,9 @@ db:
 	if !strings.Contains(body, "Main database") {
 		t.Error("description of an Other entry not rendered")
 	}
+	if !strings.Contains(body, `data-copy="postgres://db.ts.test:5432/"`) {
+		t.Error("Other row does not copy its connection string")
+	}
 }
 
 func TestEmptyPageGuidance(t *testing.T) {
@@ -421,6 +449,42 @@ wild:
 	}
 	if e := entries["wild"]; sections["wild"] != "Other" || e.Status != StatusUp {
 		t.Errorf("tcp:* web: false: got section=%q status=%s (%s), want Other checked on 443", sections["wild"], e.Status, e.Reason)
+	}
+}
+
+func TestCopyOverride(t *testing.T) {
+	path := writeOverrides(t, `
+gitea:
+  copy: git@gitea.ts.test
+db:
+  copy: psql -h db.ts.test
+`)
+	lister := &fakeLister{services: []tsapi.Service{
+		{Name: "svc:gitea", Ports: []string{"tcp:443", "tcp:22"}},
+		{Name: "svc:db", Ports: []string{"tcp:5432"}},
+	}}
+	c := newCatalog(lister, &fakeNet{}, path)
+	c.Refresh(t.Context())
+	v := c.View()
+
+	// A web Service keeps its tile and gains a row under Other.
+	if len(v.Groups) != 1 || len(v.Groups[0].Entries) != 1 || v.Groups[0].Entries[0].URL != "https://gitea.ts.test/" {
+		t.Fatalf("gitea tile: got %+v", v.Groups)
+	}
+	copies := map[string]string{}
+	for _, e := range v.Other {
+		if e.URL != "" {
+			t.Errorf("%s row under Other has a URL %q", e.Name, e.URL)
+		}
+		copies[e.Name] = e.Copy
+	}
+	// The override replaces the value inferred from the port.
+	if copies["gitea"] != "git@gitea.ts.test" || copies["db"] != "psql -h db.ts.test" || len(v.Other) != 2 {
+		t.Errorf("rows under Other: got %v", copies)
+	}
+	// The flat list names each Service once: the copy row repeats the tile.
+	if n := len(v.all()); n != 2 {
+		t.Errorf("flat list has %d entries, want 2", n)
 	}
 }
 

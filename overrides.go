@@ -20,6 +20,7 @@ type Override struct {
 	Hidden      bool   `yaml:"hidden"`
 	URL         string `yaml:"url"`
 	Web         *bool  `yaml:"web"`
+	Copy        string `yaml:"copy"`
 }
 
 // LoadOverrides returns overrides keyed by Service name without "svc:".

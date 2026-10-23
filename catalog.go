@@ -63,7 +63,8 @@ type Entry struct {
 	Icon        string   `json:"icon"`
 	Host        string   `json:"host"`
 	Ports       []string `json:"ports"`
-	URL         string   `json:"url,omitempty"` // empty for non-web Services
+	URL         string   `json:"url,omitempty"`  // empty for non-web Services
+	Copy        string   `json:"copy,omitempty"` // what a click copies under Other
 	Status      Status   `json:"status"`
 	Reason      string   `json:"reason,omitempty"` // why the last check failed
 
@@ -84,12 +85,23 @@ type View struct {
 	Notices []Notice  `json:"notices,omitempty"`
 }
 
+// all flattens the page in order, one Entry per Service: a web Service's
+// copy row under Other repeats its tile and is skipped.
 func (v View) all() []Entry {
 	all := []Entry{} // never nil: /api/list.json encodes [] rather than null
+	seen := map[string]bool{}
 	for _, g := range v.Groups {
+		for _, e := range g.Entries {
+			seen[e.Name] = true
+		}
 		all = append(all, g.Entries...)
 	}
-	return append(all, v.Other...)
+	for _, e := range v.Other {
+		if !seen[e.Name] {
+			all = append(all, e)
+		}
+	}
+	return all
 }
 
 type Catalog struct {
@@ -243,8 +255,16 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 			log.Printf("%s is back up", e.Name)
 		}
 		if e.URL == "" {
+			if e.Copy == "" {
+				e.Copy = copyValue(e.Host, e.Ports)
+			}
 			view.Other = append(view.Other, e)
 			continue
+		}
+		if e.Copy != "" { // a web Service with a `copy` override also gets a row under Other
+			row := e
+			row.URL, row.Description = "", "" // the tile already shows the description
+			view.Other = append(view.Other, row)
 		}
 		if e.probe != nil {
 			detected[e.Name] = e.URL
@@ -275,6 +295,7 @@ func newEntry(name, suffix string, svc tsapi.Service, o Override) Entry {
 		Host:        name + "." + suffix,
 		Ports:       svc.Ports,
 		Status:      StatusUnknown,
+		Copy:        o.Copy,
 		order:       o.Order,
 	}
 	switch {
@@ -299,6 +320,36 @@ func newEntry(name, suffix string, svc tsapi.Service, o Override) Entry {
 		e.Ports = []string{}
 	}
 	return e
+}
+
+// copyValue is what a click copies for a non-web Service: a connection
+// string for well-known ports, else the hostname.
+func copyValue(host string, ports []string) string {
+	port, n := 0, 0
+	for lo, hi := range tcpRanges(ports) {
+		if lo != hi {
+			return host
+		}
+		port, n = lo, n+1
+	}
+	if n != 1 {
+		return host
+	}
+	switch port {
+	case 22:
+		return "ssh " + host
+	case 5900:
+		return "vnc://" + host
+	case 5432:
+		return "postgres://" + host + ":5432/"
+	case 3306:
+		return "mysql://" + host + ":3306/"
+	case 6379:
+		return "redis://" + host + ":6379"
+	case 27017:
+		return "mongodb://" + host + ":27017/"
+	}
+	return host
 }
 
 // tcpRanges parses "tcp:443", "tcp:8000-8010" and "tcp:*"; other protocols

@@ -98,9 +98,10 @@ The unit stores state in `/var/lib/tailhome` and reads `/etc/tailhome/overrides.
 
 ## How it works
 
-- **Tiles and "Other".** A Service becomes a tile if it advertises port 443 or 80, has a `url` or `web: true` override, or answers HTTP on its first TCP port. Without a usable port (such as `do-not-validate`), tailhome tries HTTPS on 443, then HTTP on 80. Services needing HTTP detection stay under "Other" until they answer. Other Services, such as databases, stay there; click one to copy its hostname. Use `web: false` to keep a Service under "Other".
+- **Tiles.** Tiles open in your browser. A Service becomes a tile if it advertises port 443 or 80, has a `url` or `web: true` override, or answers HTTP on its first TCP port. Without a usable port (such as `do-not-validate`), tailhome tries HTTPS on 443, then HTTP on 80. A Service that needs that detection waits under "Other" until it first answers, even if it is down when tailhome starts.
+- **Other.** Everything else goes under "Other", and a click copies what you need to connect: `ssh host` for port 22, `vnc://host` for 5900, a `postgres://`, `mysql://`, `redis://` or `mongodb://` URL for their default ports, else the hostname. Set `copy` to choose the value; on a web Service, `copy` also adds a row under "Other". Use `web: false` to keep a Service under "Other".
 - **Health.**
-  - **Green:** an HTTP response below 500, including redirects; a successful TCP connection for "Other" and non-HTTP links (`ssh://`, `vnc://`).
+  - **Green:** an HTTP response below 500, including redirects; a successful TCP connection for "Other" and non-HTTP `url` overrides (`ssh://`, `vnc://`).
   - **Red:** the check failed. Hover over the dot for the reason. A tile that goes down stays in its group.
   - **Grey:** nothing to check, such as a Service with no TCP port.
 - **Refresh.** tailhome reloads and checks Services every 5 minutes. Select **refresh** to check now, at most once every 10 seconds. If discovery or overrides fail, the page keeps the last list and shows the error.
@@ -130,6 +131,8 @@ grafana:
   label: Grafana
   icon: grafana             # a dashboard-icons name, or a full image URL
   url: https://grafana.example.ts.net/d/main
+gitea:
+  copy: git@gitea.example.ts.net      # what a click copies; on a web Service, adds a row under "Other"
 nas:
   url: vnc://nas.example.ts.net:5900   # also ssh, rdp, smb, ftp, sftp, telnet
 postgres:
@@ -198,7 +201,7 @@ Both tools fetch the list server-side, not from your browser, so the machine run
     {{ range .JSON.Array "" }}
       <li class="flex items-center gap-10">
         <img src="{{ .String "icon" }}" width="20" height="20" alt="" onerror="this.style.visibility='hidden'">
-        {{ if .String "url" }}<a class="color-highlight" href="{{ .String "url" }}">{{ .String "label" }}</a>{{ else }}<span>{{ .String "label" }}</span> <span class="color-subdue">{{ .String "host" }}</span>{{ end }}
+        {{ if .String "url" }}<a class="color-highlight" href="{{ .String "url" }}">{{ .String "label" }}</a>{{ else }}<span>{{ .String "label" }}</span> <span class="color-subdue">{{ .String "copy" }}</span>{{ end }}
         <span class="{{ if eq (.String "status") "up" }}color-positive{{ else if eq (.String "status") "down" }}color-negative{{ else }}color-subdue{{ end }}" title="{{ .String "status" }}">●</span>
       </li>
     {{ end }}

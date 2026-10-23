@@ -13,5 +13,7 @@ whoami:
   web: true                 # always a tile, even before it answers HTTP
 pgadmin:
   web: false                # under "Other" instead of a tile
+gitea:
+  copy: git@gitea.example.ts.net   # what a click copies; on a web Service, adds a row under "Other"
 postgres:
   hidden: true

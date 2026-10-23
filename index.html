@@ -6,8 +6,8 @@
 <title>{{.Title}}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f9e5b'/%3E%3Cpath d='M8 15.5 16 8l8 7.5V24a1 1 0 0 1-1 1h-4.5v-5.5h-5V25H9a1 1 0 0 1-1-1z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
-  :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --down: #d1453b; --unknown: #a3a39c; --warn: #c88a12; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; } }
+  :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --ok: #1f7a43; --down: #d1453b; --unknown: #a3a39c; --warn: #c88a12; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; --ok: #5cc985; } }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
   main { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; }
@@ -41,7 +41,17 @@
   .dot.down { background: var(--down); }
   .other { display: flex; flex-direction: column; gap: 8px; }
   .other .tile { cursor: copy; font: inherit; color: inherit; text-align: left; width: 100%; }
-  code { font: 13px ui-monospace, monospace; user-select: all; }
+  /* Say how Other works once, in its heading, instead of on every row. */
+  h2 .how { margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  h2 .tap { display: none; }
+  @media (hover: none) { h2 .tap { display: inline; } h2 .click { display: none; } }
+  .copied { color: var(--ok); font-weight: 400; }
+  .manual { margin-top: 6px; font-size: 13px; color: var(--fg); }
+  .manual code { display: block; word-break: break-all; }
+  .manual span { color: var(--muted); }
+  code { font: 13px ui-monospace, monospace; }
+  ::selection { background: color-mix(in srgb, var(--up) 28%, transparent); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -56,7 +66,7 @@
   <h2>{{.Name}}</h2>
   <div class="grid">
     {{range .Entries}}
-    <a class="tile" href="{{link .URL}}" title="{{.Host}}">
+    <a class="tile" href="{{link .URL}}" title="Open {{.Host}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}</div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}</div>
       <span class="dot {{.Status}}" title="{{.Status}}{{with .Reason}}: {{.}}{{end}}"></span>
@@ -65,12 +75,12 @@
   </div>
   {{end}}
   {{with .Other}}
-  <h2>Other</h2>
+  <h2>Other<span class="how"><span class="click">click to copy</span><span class="tap">tap to copy</span></span></h2>
   <div class="other">
     {{range .}}
-    <button class="tile" type="button" data-copy="{{.Host}}" title="Copy {{.Host}}">
+    <button class="tile" type="button" data-copy="{{.Copy}}" title="Copy {{.Copy}}">
       {{template "icon" .}}
-      <div class="text"><div class="label">{{.Label}}</div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}<div class="sub"><code>{{.Host}}</code> · {{range $i, $p := .Ports}}{{if $i}}, {{end}}{{$p}}{{end}}<span class="hint" role="status"></span></div></div>
+      <div class="text"><div class="label">{{.Label}}<span class="copied" aria-hidden="true"></span></div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}<div class="sub"><code>{{.Copy}}</code>{{if eq .Copy .Host}}{{with .Ports}} · {{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{end}}{{end}}</div></div>
       <span class="dot {{.Status}}" title="{{.Status}}{{with .Reason}}: {{.}}{{end}}"></span>
     </button>
     {{end}}
@@ -92,20 +102,49 @@
   </section>
   {{end}}
 </main>
+<p class="sr" role="status" id="status"></p>
 <script>
+  const status = document.getElementById("status");
+  const clearManual = () => document.querySelectorAll(".manual").forEach((n) => n.remove());
+  async function copy(value) {
+    try { await navigator.clipboard.writeText(value); return true; } catch {}
+    // The Clipboard API needs HTTPS; this older path also works on plain HTTP, during a click.
+    const back = document.activeElement; // select() moves focus; give it back after
+    const ta = Object.assign(document.createElement("textarea"), { value });
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch {}
+    ta.remove();
+    back?.focus({ preventScroll: true });
+    return ok;
+  }
   document.addEventListener("click", async (ev) => {
+    if (ev.target.closest(".manual")) return; // leave the value selectable
+    clearManual();
     const el = ev.target.closest("[data-copy]");
     if (!el) return;
-    const hint = el.querySelector(".hint");
-    try {
-      await navigator.clipboard.writeText(el.dataset.copy);
-      hint.textContent = " · copied";
-      setTimeout(() => { hint.textContent = ""; }, 1500);
-    } catch {
-      // Clipboard denied or unavailable (e.g. plain HTTP): select it for a manual copy.
-      getSelection().selectAllChildren(el.querySelector("code"));
-      hint.textContent = " · press Ctrl+C or ⌘C to copy";
+    const value = el.dataset.copy;
+    if (await copy(value)) {
+      const mark = el.querySelector(".copied");
+      mark.textContent = " · Copied";
+      clearTimeout(mark.timer);
+      mark.timer = setTimeout(() => { mark.textContent = ""; }, 1500);
+      status.textContent = "Copied " + value;
+      return;
     }
+    // Both paths refused: show the value selected so Ctrl+C or ⌘C copies it.
+    const box = document.createElement("div");
+    box.className = "manual";
+    const code = document.createElement("code");
+    code.textContent = value;
+    const hint = document.createElement("span");
+    hint.textContent = "Copying is blocked here. Press ⌘C or Ctrl+C.";
+    box.append(code, hint);
+    el.querySelector(".text").append(box);
+    getSelection().selectAllChildren(code);
+    status.textContent = "Copying is blocked here. " + value + " is selected: press Command+C or Ctrl+C.";
   });
 </script>
 </body>
