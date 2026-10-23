@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f9e5b'/%3E%3Cpath d='M8 15.5 16 8l8 7.5V24a1 1 0 0 1-1 1h-4.5v-5.5h-5V25H9a1 1 0 0 1-1-1z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --ok: #1f7a43; --down: #d1453b; --unknown: #a3a39c; --warn: #c88a12; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; --ok: #5cc985; } }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; --up: #45b46f; --ok: #5cc985; } }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
   main { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; }
@@ -29,8 +29,9 @@
   .empty li { margin: 6px 0; padding-left: 4px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
   .tile { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
-  a.tile:hover { border-color: var(--muted); }
-  .icon { position: relative; flex: none; width: 36px; height: 36px; border-radius: 8px; background: var(--line); display: grid; place-items: center; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+  .tile:hover, .tile:focus-visible { border-color: var(--muted); }
+  .tile:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .icon { position: relative; flex: none; width: 36px; height: 36px; border-radius: 8px; background: var(--line); display: grid; place-items: center; font-weight: 600; color: color-mix(in srgb, var(--fg) 45%, var(--muted)); text-transform: uppercase; }
   .icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--card); visibility: hidden; }
   .icon img.loaded { visibility: visible; }
   .text { min-width: 0; flex: 1; }
@@ -41,6 +42,7 @@
   .dot.down { background: var(--down); }
   .other { display: flex; flex-direction: column; gap: 8px; }
   .other .tile { cursor: copy; font: inherit; color: inherit; text-align: left; width: 100%; }
+  .other .tile:hover code, .other .tile:focus-visible code { color: var(--fg); }
   /* Say how Other works once, in its heading, instead of on every row. */
   h2 .how { margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; }
   h2 .tap { display: none; }
@@ -69,7 +71,7 @@
     <a class="tile" href="{{link .URL}}" title="Open {{.Host}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}</div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}</div>
-      <span class="dot {{.Status}}" title="{{.Status}}{{with .Reason}}: {{.}}{{end}}"></span>
+      {{template "dot" .}}
     </a>
     {{end}}
   </div>
@@ -81,7 +83,7 @@
     <button class="tile" type="button" data-copy="{{.Copy}}" title="Copy {{.Copy}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}<span class="copied" aria-hidden="true"></span></div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}<div class="sub"><code>{{.Copy}}</code>{{if eq .Copy .Host}}{{with .Ports}} · {{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{end}}{{end}}</div></div>
-      <span class="dot {{.Status}}" title="{{.Status}}{{with .Reason}}: {{.}}{{end}}"></span>
+      {{template "dot" .}}
     </button>
     {{end}}
   </div>
@@ -150,3 +152,4 @@
 </body>
 </html>
 {{define "icon"}}<span class="icon">{{printf "%.1s" .Label}}<img src="{{.Icon}}" alt="" onload="this.classList.add('loaded')"></span>{{end}}
+{{define "dot"}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}
