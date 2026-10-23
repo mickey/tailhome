@@ -35,7 +35,7 @@ body:
     id: tailhome-version
     attributes:
       label: tailhome version
-      description: The first log line, such as "tailhome v0.2.0".
+      description: The first log line, "tailhome …".
     validations:
       required: true
 

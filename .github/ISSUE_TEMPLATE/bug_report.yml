@@ -19,10 +19,7 @@ body:
     id: deployment
     attributes:
       label: How do you run tailhome?
-      options:
-        - Docker
-        - Binary
-        - systemd
+      options: [Docker Compose, Docker, Binary, systemd, Other]
     validations:
       required: true
   - type: textarea

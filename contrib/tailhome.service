@@ -12,7 +12,7 @@ StateDirectory=tailhome
 ConfigurationDirectory=tailhome
 Environment=TAILHOME_STATE_DIR=/var/lib/tailhome
 Environment=TAILHOME_OVERRIDES=/etc/tailhome/overrides.yaml
-EnvironmentFile=/etc/tailhome/env
+EnvironmentFile=-/etc/tailhome/env
 Restart=on-failure
 RestartSec=10s
 ProtectSystem=strict

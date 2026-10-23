@@ -1,7 +1,7 @@
 services:
   tailhome:
     image: ghcr.io/mickey/tailhome:latest
-    env_file: [{ path: .env, required: false }] # optional OAuth client, see .env.example
+    env_file: [{ path: .env, required: false }] # optional, see "Groups and descriptions"
     environment:
       TZ: Etc/UTC # your time zone, for the "updated" time
       TAILHOME_OVERRIDES: /config/overrides.yaml

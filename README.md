@@ -70,19 +70,18 @@ To skip browser login, set `TS_AUTHKEY` to an [auth key](https://console.tailsca
 <details>
 <summary><strong>Without Docker: binary, Go or systemd</strong></summary>
 
-Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or install it with Go 1.27.3 or later:
+Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or install it with Go:
 
 ```sh
 go install github.com/mickey/tailhome@latest
 tailhome
 ```
 
-For systemd, create `.env` (empty without credentials), then run as root:
+For systemd, run as root (add `/etc/tailhome/env` only with an OAuth client):
 
 ```sh
 install -m 755 tailhome /usr/local/bin/
 install -d /etc/tailhome
-install -m 600 .env /etc/tailhome/env
 install -m 644 contrib/tailhome.service /etc/systemd/system/
 systemctl enable --now tailhome
 ```
@@ -126,15 +125,20 @@ To change them, create `config/overrides.yaml` next to `compose.yaml`. All field
 ```yaml
 jellyfin:
   group: Media
-  order: -1                 # lower sorts first; unset counts as 0, ties sort by label
+  order: -10                # lower sorts first; unset counts as 0, ties sort by label
 grafana:
   label: Grafana
+  description: Metrics and dashboards
   icon: grafana             # a dashboard-icons name, or a full image URL
   url: https://grafana.example.ts.net/d/main
-gitea:
-  copy: git@gitea.example.ts.net      # what a click copies; on a web Service, adds a row under "Other"
 nas:
-  url: vnc://nas.example.ts.net:5900   # also ssh, rdp, smb, ftp, sftp, telnet
+  url: vnc://nas.example.ts.net:5900   # also ssh, rdp, smb, ftp, sftp, telnet; TCP-checked
+whoami:
+  web: true                 # always a tile, even before it answers HTTP
+pgadmin:
+  web: false                # under "Other" instead of a tile
+gitea:
+  copy: git@gitea.example.ts.net   # what a click copies; on a web Service, adds a row under "Other"
 postgres:
   hidden: true
 ```
@@ -296,7 +300,8 @@ Without Docker, set the same two variables before starting tailhome.
 | tailhome exits with `joining the tailnet: creating an auth key for tag:tailhome: …` | Give the OAuth client Auth Keys: Write for `tag:tailhome` and add the tag to `tagOwners`. |
 | "Refresh failed: …" mentions `oauth2` or `403` | Give the OAuth client Services: Read. |
 | A dot is red but the Service opens | Check whether policy lets tailhome reach the Service. With OAuth, add the grants from step 1. |
-| An override has no effect | Check the logs for a name warning, and that the file is readable (`chmod 644`). |
+| An override has no effect | Check the logs for a name warning, and that `TAILHOME_OVERRIDES` points at the file: a missing file counts as no overrides. |
+| "Refresh failed: … permission denied" | Make the overrides file readable (`chmod 644`). |
 
 ---
 
