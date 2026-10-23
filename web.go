@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"html/template"
 	"log"
@@ -13,6 +13,9 @@ import (
 
 //go:embed index.html
 var indexHTML string
+
+//go:embed icons
+var icons embed.FS
 
 var page = template.Must(template.New("index.html").Funcs(template.FuncMap{"link": link}).Parse(indexHTML))
 
@@ -34,6 +37,19 @@ func link(raw string) any {
 const minManualRefresh = 10 * time.Second
 
 func NewHandler(c *Catalog, title string) http.Handler {
+	// The web app manifest lets phones add the page to the home screen as an app.
+	manifest, err := json.Marshal(map[string]any{
+		"name": title, "short_name": title, "id": "/", "start_url": "/", "scope": "/",
+		"display": "standalone", "background_color": "#2f9e5b", "theme_color": "#2f9e5b",
+		"icons": []map[string]string{
+			{"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+			{"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+			{"src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Has("refresh") {
@@ -59,6 +75,14 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	// such as Homepage's customapi dynamic-list.
 	mux.HandleFunc("GET /api/list.json", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, c.View().all())
+	})
+	mux.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		w.Write(manifest)
+	})
+	mux.HandleFunc("GET /icons/{name}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400") // embedded files have no modification time
+		http.ServeFileFS(w, r, icons, "icons/"+r.PathValue("name"))
 	})
 	return mux
 }

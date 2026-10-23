@@ -105,6 +105,7 @@ The unit stores state in `/var/lib/tailhome` and reads `/etc/tailhome/overrides.
   - **Grey:** nothing to check, such as a Service with no TCP port.
 - **Refresh.** tailhome reloads and checks Services every 5 minutes. Select **refresh** to check now, at most once every 10 seconds. If discovery or overrides fail, the page keeps the last list and shows the error.
 - **Notices.** Without credentials, the page warns when the node's key will expire or when the node got another name, such as `home-1`. It rechecks both on every refresh.
+- **Home screen.** On a phone, use **Add to Home Screen** (Safari) or **Install app** (Chrome) to open tailhome like an app. Coming back to the page after 5 minutes, in the app or a tab, reloads it.
 - **JSON.** `/api/services.json` returns the same data as the page, notices included. `/api/list.json` returns every Service as one flat list, in page order.
 
 ---

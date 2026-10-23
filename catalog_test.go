@@ -350,6 +350,36 @@ db:
 	}
 }
 
+// Phones only offer the page as an app when the manifest and its icons load.
+func TestManifestIcons(t *testing.T) {
+	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
+	get := func(target string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+		return rec
+	}
+	var m struct {
+		Name  string
+		Icons []struct{ Src string }
+	}
+	rec := get("/manifest.webmanifest")
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != "start" || len(m.Icons) == 0 {
+		t.Errorf("manifest: %s", rec.Body)
+	}
+	srcs := []string{"/icons/apple-touch-icon.png"} // linked from the page for iOS
+	for _, i := range m.Icons {
+		srcs = append(srcs, i.Src)
+	}
+	for _, src := range srcs {
+		if rec := get(src); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
+			t.Errorf("%s: %d %s", src, rec.Code, rec.Header().Get("Content-Type"))
+		}
+	}
+}
+
 func TestEmptyPageGuidance(t *testing.T) {
 	render := func(c *Catalog) string {
 		c.Refresh(t.Context())
