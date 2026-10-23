@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -277,9 +278,24 @@ db:
 	if body := get("/api/services.json").Body.String(); !strings.Contains(body, `"groups":[]`) || !strings.Contains(body, `"other":[]`) {
 		t.Errorf("JSON before first refresh: %s", body)
 	}
+	if body := strings.TrimSpace(get("/api/list.json").Body.String()); body != "[]" {
+		t.Errorf("list before first refresh: %s", body)
+	}
 	c.Refresh(t.Context())
 	if body := get("/api/services.json").Body.String(); !strings.Contains(body, `"name":"bare"`) || strings.Contains(body, `"ports":null`) {
 		t.Errorf("JSON ports: %s", body)
+	}
+	var list []Entry
+	if err := json.Unmarshal(get("/api/list.json").Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range list {
+		names = append(names, e.Name)
+	}
+	// Tiles first, then Other, each in page order.
+	if got := strings.Join(names, ","); got != "evil,nas,bare,db" {
+		t.Errorf("list order: %s", got)
 	}
 	rec := get("/")
 	body := rec.Body.String()

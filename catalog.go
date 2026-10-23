@@ -85,7 +85,7 @@ type View struct {
 }
 
 func (v View) all() []Entry {
-	var all []Entry
+	all := []Entry{} // never nil: /api/list.json encodes [] rather than null
 	for _, g := range v.Groups {
 		all = append(all, g.Entries...)
 	}

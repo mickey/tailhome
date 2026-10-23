@@ -56,6 +56,8 @@ docker compose up -d
 docker compose logs -f
 ```
 
+Without a compose file: `docker run -d --name tailhome --restart unless-stopped -v tailhome-data:/data ghcr.io/mickey/tailhome:latest`, then `docker logs -f tailhome`.
+
 Open the login link in the logs to add tailhome to your tailnet. When the logs show `serving https://home.<tailnet>.ts.net`, open `http://home/` from a tailnet device. Keep the trailing slash so your browser doesn't search for "home".
 
 tailhome joins under your account as a device named `home`:
@@ -103,7 +105,7 @@ The unit stores state in `/var/lib/tailhome` and reads `/etc/tailhome/overrides.
   - **Grey:** nothing to check, such as a Service with no TCP port.
 - **Refresh.** tailhome reloads and checks Services every 5 minutes. Select **refresh** to check now, at most once every 10 seconds. If discovery or overrides fail, the page keeps the last list and shows the error.
 - **Notices.** Without credentials, the page warns when the node's key will expire or when the node got another name, such as `home-1`. It rechecks both on every refresh.
-- **JSON.** `/api/services.json` returns the same data as the page, notices included.
+- **JSON.** `/api/services.json` returns the same data as the page, notices included. `/api/list.json` returns every Service as one flat list, in page order.
 
 ---
 
@@ -152,6 +154,56 @@ tailhome rereads overrides on every refresh, so edits need no restart. Keys are 
 - **Descriptions.** With an OAuth client, `docktail.service.description` appears on the tile.
 - **Paths.** Tiles open `/` because the API omits `docktail.service.path`. Set `url` overrides.
 - **Stopped containers.** DockTail keeps their Services, leaving red tiles. Set `DELETE_UNUSED_SERVICES=true` in DockTail or `hidden: true` in overrides. TSDProxy deletes stopped containers' Services.
+
+</details>
+
+---
+
+## Homepage and Glance
+
+Already using one of them? Keep it: Homepage and Glance list what you declare in YAML or Docker labels, and tailhome can feed them every Tailscale Service it discovers, with its health.
+
+<details>
+<summary><strong>Show the Homepage and Glance widgets</strong></summary>
+
+Both tools fetch the list server-side, not from your browser, so the machine running them must be on your tailnet and your policy must let it reach tailhome. Replace `home.<tailnet>.ts.net` with the address tailhome logs.
+
+**Homepage**, in `services.yaml`:
+
+```yaml
+- Tailnet:
+    - Tailscale Services:
+        icon: tailscale.svg
+        href: https://home.<tailnet>.ts.net/
+        widget:
+          type: customapi
+          url: https://home.<tailnet>.ts.net/api/list.json
+          display: dynamic-list
+          mappings:
+            name: label
+            label: status
+            target: "{url}"
+```
+
+**Glance**, in `glance.yml`:
+
+```yaml
+- type: custom-api
+  title: Tailscale Services
+  title-url: https://home.<tailnet>.ts.net/
+  url: https://home.<tailnet>.ts.net/api/list.json
+  cache: 1m
+  template: |
+    <ul class="list list-gap-10 collapsible-container" data-collapse-after="10">
+    {{ range .JSON.Array "" }}
+      <li class="flex items-center gap-10">
+        <img src="{{ .String "icon" }}" width="20" height="20" alt="" onerror="this.style.visibility='hidden'">
+        {{ if .String "url" }}<a class="color-highlight" href="{{ .String "url" }}">{{ .String "label" }}</a>{{ else }}<span>{{ .String "label" }}</span> <span class="color-subdue">{{ .String "host" }}</span>{{ end }}
+        <span class="{{ if eq (.String "status") "up" }}color-positive{{ else if eq (.String "status") "down" }}color-negative{{ else }}color-subdue{{ end }}" title="{{ .String "status" }}">●</span>
+      </li>
+    {{ end }}
+    </ul>
+```
 
 </details>
 
@@ -247,7 +299,7 @@ Without Docker, set the same two variables before starting tailhome.
 
 ## Security and privacy
 
-- **Service names.** Anyone who can open tailhome sees all listed Service names on the page and in `/api/services.json`, even Services they can't open. Restrict access to tailhome if needed.
+- **Service names.** Anyone who can open tailhome sees all listed Service names on the page and in `/api/services.json` and `/api/list.json`, even Services they can't open. Restrict access to tailhome if needed.
 - **Icons.** Browsers request icons from `cdn.jsdelivr.net`, revealing Service names to jsDelivr. Use `icon` overrides with your own URLs to avoid this.
 - **Logs.** tailhome uploads diagnostic logs to Tailscale, like other Tailscale nodes. Set `TS_NO_LOGS_NO_SUPPORT=true` to stop uploads.
 

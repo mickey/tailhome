@@ -53,10 +53,19 @@ func NewHandler(c *Catalog, title string) http.Handler {
 		}
 	})
 	mux.HandleFunc("GET /api/services.json", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(c.View()); err != nil {
-			log.Printf("encode: %v", err)
-		}
+		writeJSON(w, c.View())
+	})
+	// One flat array in page order, for dashboards that render a list,
+	// such as Homepage's customapi dynamic-list.
+	mux.HandleFunc("GET /api/list.json", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, c.View().all())
 	})
 	return mux
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("encode: %v", err)
+	}
 }
