@@ -3,3 +3,5 @@
 /data/
 /overrides.yaml
 .env
+.herdr-web-ui/
+.impeccable/
