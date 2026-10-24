@@ -669,3 +669,37 @@ func TestStalledIconListDoesNotDelayRefresh(t *testing.T) {
 		t.Errorf("refresh took %v and listed %d Services, want it quick and listing 1", elapsed, len(c.View().all()))
 	}
 }
+
+func TestShortcuts(t *testing.T) {
+	path := writeOverrides(t, `
+grafana:
+  url: https://grafana.ts.test/d/main
+evil:
+  url: "javascript:alert(1)"
+`)
+	lister := &fakeLister{services: []tsapi.Service{
+		{Name: "svc:jellyfin", Ports: []string{"tcp:443"}},
+		{Name: "svc:grafana", Ports: []string{"tcp:443"}},
+		{Name: "svc:evil", Ports: []string{"tcp:443"}},
+		{Name: "svc:db", Ports: []string{"tcp:5432"}},
+	}}
+	c := newCatalog(lister, &fakeNet{}, path)
+	c.Refresh(t.Context())
+	h := NewHandler(c, "home")
+	for target, want := range map[string]string{
+		"/go/jellyfin":  "https://jellyfin.ts.test/",
+		"/go/JellyFin":  "https://jellyfin.ts.test/",      // case-insensitive
+		"/go/grafana":   "https://grafana.ts.test/d/main", // the tile's own URL, override included
+		"/go/jellyfin/": "https://jellyfin.ts.test/",      // pasted with a trailing slash
+		"/go/jel":       "",                               // no prefixes: a bookmark must not break when a similar name appears
+		"/go/db":        "",                               // not a tile: nothing to open
+		"/go/evil":      "",                               // never redirect where a tile wouldn't link
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+		got := rec.Header().Get("Location")
+		if want == "" && rec.Code != http.StatusNotFound || want != "" && (rec.Code != http.StatusFound || got != want) {
+			t.Errorf("%s: %d %q, want %q", target, rec.Code, got, want)
+		}
+	}
+}

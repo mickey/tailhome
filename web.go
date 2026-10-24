@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -86,7 +87,32 @@ func NewHandler(c *Catalog, title string) http.Handler {
 		w.Header().Set("Cache-Control", "public, max-age=86400") // embedded files have no modification time
 		http.ServeFileFS(w, r, icons, "icons/"+r.PathValue("name"))
 	})
+	// Shortcuts for the address bar: home/go/jellyfin opens the jellyfin tile.
+	goTo := func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if u := shortcut(c.View(), name); u != "" {
+			http.Redirect(w, r, u, http.StatusFound) // not cached: the tile's URL can change
+			return
+		}
+		http.Error(w, "No tile matches "+name+". Open "+title+"/ for the tile list.", http.StatusNotFound)
+	}
+	mux.HandleFunc("GET /go/{name}", goTo)
+	mux.HandleFunc("GET /go/{name}/{$}", goTo) // pasted with a trailing slash
 	return mux
+}
+
+// shortcut returns the URL of the tile with this Service name, ignoring case.
+// Only tile URLs qualify, so /go/ can't redirect anywhere else. A prefix
+// doesn't match: a bookmark must not break when a similar name appears.
+func shortcut(v View, name string) string {
+	for _, g := range v.Groups {
+		for _, e := range g.Entries {
+			if _, ok := link(e.URL).(template.URL); ok && strings.EqualFold(e.Name, name) {
+				return e.URL // an override such as javascript: fails link and never matches
+			}
+		}
+	}
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
