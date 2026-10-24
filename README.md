@@ -22,7 +22,7 @@ Open `http://home/` to browse your Tailscale Services, with icons and live healt
 - **One small binary, no host Tailscale needed.** tailhome joins your tailnet through [tsnet](https://tailscale.com/docs/features/tsnet). The image is about 12 MB.
 - **Health checks inside the tailnet.** A green dot means tailhome can reach the Service.
 
-tailhome lists [Tailscale Services](https://tailscale.com/docs/features/tailscale-services), not machines. No Services yet? Define one in the [admin console](https://console.tailscale.com/admin/services), or publish containers with [DockTail](#containers).
+tailhome lists [Tailscale Services](https://tailscale.com/docs/features/tailscale-services), not machines. It **pairs well with [DockTail](https://github.com/marvinvr/docktail)**: publish a container with DockTail, and it appears in tailhome. For alternatives, see [other ways to create a Service](https://tailscale.com/docs/features/tailscale-services) and [Containers](#containers).
 
 tailhome is a **launcher, not a dashboard**: no widgets, no feeds. For those, use [Homepage](https://gethomepage.dev) or [Glance](https://github.com/glanceapp/glance).
 
