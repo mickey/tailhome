@@ -112,6 +112,7 @@ type Catalog struct {
 	Prober        *Prober
 	Local         bool                           // listing from the netmap, without API credentials
 	Notices       func(context.Context) []Notice // setup problems, rechecked on every refresh; may be nil
+	Icons         *Icons                         // matches names to icons; nil uses names as-is
 
 	refreshMu   sync.Mutex        // serializes refreshes; guards detected, lastAttempt, warned
 	detected    map[string]string // Service name → URL that once answered HTTP
@@ -199,6 +200,9 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
+	if c.Icons != nil {
+		c.Icons.load(ctx)
+	}
 
 	var entries []Entry
 	selfFound := false
@@ -213,6 +217,9 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 			continue
 		}
 		e := newEntry(name, c.DNSSuffix, svc, o)
+		if o.Icon == "" && c.Icons != nil {
+			e.Icon = c.Icons.url(name)
+		}
 		// A URL detected on an earlier refresh sticks, so a web Service that
 		// stops answering stays a tile marked down instead of moving to Other.
 		if u, ok := c.detected[name]; ok && e.probe != nil {
@@ -419,7 +426,7 @@ func iconURL(icon string) string {
 	if strings.Contains(icon, "/") {
 		return icon
 	}
-	return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/" + icon + ".svg"
+	return iconBase + icon + ".svg"
 }
 
 func sortEntries(es []Entry) {

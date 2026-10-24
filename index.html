@@ -199,7 +199,7 @@
 </script>
 </body>
 </html>
-{{define "icon"}}<span class="icon">{{printf "%.1s" .Label}}<img src="{{.Icon}}" alt="" onload="this.classList.add('loaded')"></span>{{end}}
+{{define "icon"}}<span class="icon">{{printf "%.1s" .Label}}{{with .Icon}}<img src="{{.}}" alt="" onload="this.classList.add('loaded')">{{end}}</span>{{end}}
 {{define "dot"}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}
 {{define "snippet"}}<button class="snippet" type="button" data-copy="{{.}}" title="Copy"><code>{{.}}</code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>{{end}}
 {{define "addapp"}}<h3>Docker container with <a href="https://github.com/marvinvr/docktail">DockTail</a></h3>

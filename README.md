@@ -119,7 +119,7 @@ Default tile fields:
 | Label | The Service's display name, or its name in title case |
 | Description | The Service's description, with an OAuth client |
 | Group | The Service's first tag, with an OAuth client: `tag:home-lab` becomes "Home Lab". Other Services use "Services". |
-| Icon | The [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) entry named after the Service, or the label's first letter |
+| Icon | The [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) entry matching the Service name, ignoring hyphens and trailing words (`immich-server` gets Immich's icon; `homeassistant` gets Home Assistant's), or the label's first letter |
 
 To change them, create `config/overrides.yaml` next to `compose.yaml`. All fields are optional; [`overrides.example.yaml`](overrides.example.yaml) lists them:
 
@@ -309,7 +309,7 @@ Without Docker, set the same two variables before starting tailhome.
 ## Security and privacy
 
 - **Service names.** Anyone who can open tailhome sees all listed Service names on the page and in `/api/services.json` and `/api/list.json`, even Services they can't open. Restrict access to tailhome if needed.
-- **Icons.** Browsers request icons from `cdn.jsdelivr.net`, revealing Service names to jsDelivr. Use `icon` overrides with your own URLs to avoid this.
+- **Icons.** Icons load from `cdn.jsdelivr.net`. To avoid it, set `icon` overrides to your own URLs.
 - **Logs.** tailhome uploads diagnostic logs to Tailscale, like other Tailscale nodes. Set `TS_NO_LOGS_NO_SUPPORT=true` to stop uploads.
 
 Report vulnerabilities as described in [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). tailhome is released under the [MIT license](LICENSE).

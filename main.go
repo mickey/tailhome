@@ -162,6 +162,7 @@ func run() error {
 	log.Printf("serving https://%s", fqdn)
 	title, dnsSuffix, _ := strings.Cut(fqdn, ".") // home.tn.ts.net → home, tn.ts.net
 
+	icons := &Icons{Fetch: fetchIconNames}
 	catalog := &Catalog{
 		Services:      services,
 		OverridesPath: env("TAILHOME_OVERRIDES", "overrides.yaml"),
@@ -170,7 +171,9 @@ func run() error {
 		Prober:        NewProber(srv.Dial),
 		Local:         !apiMode,
 		Notices:       notices,
+		Icons:         icons,
 	}
+	icons.Loaded = func() { catalog.Refresh(ctx) } // show the matched icons now, not at the next refresh
 	go catalog.Run(ctx, refresh)
 
 	errc := make(chan error, 2)

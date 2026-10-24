@@ -611,3 +611,61 @@ func TestRefreshErrorKeepsLastView(t *testing.T) {
 		t.Fatalf("got error=%q groups=%d, want last view plus error", v.Error, len(v.Groups))
 	}
 }
+
+func TestIconMatching(t *testing.T) {
+	lister := &fakeLister{services: []tsapi.Service{
+		{Name: "svc:immich-server"}, {Name: "svc:homeassistant"}, {Name: "svc:metabase-prod"},
+		{Name: "svc:jf-prod"}, {Name: "svc:grafana"}, {Name: "svc:nas"}, {Name: "svc:go-links"},
+	}}
+	path := writeOverrides(t, "nas:\n  icon: synology\n")
+	icons := map[string]string{}
+	// The list loads in the background; Loaded refreshes once it is in, as main does.
+	catalogIcons := func(fetch func(context.Context) ([]string, error), loads bool) {
+		c := newCatalog(lister, &fakeNet{}, path)
+		loaded := make(chan struct{})
+		c.Icons = &Icons{Fetch: fetch, Loaded: func() { close(loaded) }}
+		c.Refresh(t.Context())
+		if loads { // failed fetches never call Loaded
+			<-loaded
+			c.Refresh(t.Context())
+		}
+		entries, _ := index(c.View())
+		for name, e := range entries {
+			icons[name] = strings.TrimSuffix(strings.TrimPrefix(e.Icon, iconBase), ".svg")
+		}
+	}
+
+	catalogIcons(func(context.Context) ([]string, error) {
+		return []string{"immich", "home-assistant", "metabase", "grafana", "grafana-alt", "go"}, nil
+	}, true)
+	for name, want := range map[string]string{
+		"immich-server": "immich",         // trailing word dropped
+		"homeassistant": "home-assistant", // hyphens ignored
+		"metabase-prod": "metabase",
+		"grafana":       "grafana",
+		"jf-prod":       "",         // no icon: the tile shows its first letter, and nothing is requested
+		"nas":           "synology", // an icon override wins
+		"go-links":      "",         // too short a first word to mean the Go icon
+	} {
+		if icons[name] != want {
+			t.Errorf("%s: icon %q, want %q", name, icons[name], want)
+		}
+	}
+
+	// Without the list of icons, names are used as they are.
+	catalogIcons(func(context.Context) ([]string, error) { return nil, errors.New("offline") }, false)
+	if icons["immich-server"] != "immich-server" || icons["jf-prod"] != "jf-prod" {
+		t.Errorf("icons without the list: %v", icons)
+	}
+}
+
+// A blocked CDN must not hold up discovery or manual refreshes.
+func TestStalledIconListDoesNotDelayRefresh(t *testing.T) {
+	c := newCatalog(&fakeLister{services: []tsapi.Service{{Name: "svc:immich-server"}}}, &fakeNet{}, "")
+	c.Icons = &Icons{Fetch: func(ctx context.Context) ([]string, error) { <-ctx.Done(); return nil, ctx.Err() }}
+	start := time.Now()
+	c.Refresh(t.Context())
+	if elapsed := time.Since(start); elapsed > time.Second || len(c.View().all()) != 1 {
+		t.Errorf("refresh took %v and listed %d Services, want it quick and listing 1", elapsed, len(c.View().all()))
+	}
+}
