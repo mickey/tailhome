@@ -50,6 +50,7 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	if err != nil {
 		panic(err)
 	}
+	address := "https://" + title + "." + c.DNSSuffix + "/"
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Has("refresh") {
@@ -60,10 +61,11 @@ func NewHandler(c *Catalog, title string) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data := struct {
-			Title string
-			Local bool
+			Title   string
+			Address string // the page's full https address, for other devices
+			Local   bool
 			View
-		}{title, c.Local, c.View()}
+		}{title, address, c.Local, c.View()}
 		if err := page.Execute(w, data); err != nil {
 			log.Printf("render: %v", err)
 		}

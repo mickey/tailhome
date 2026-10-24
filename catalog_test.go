@@ -380,6 +380,17 @@ func TestManifestIcons(t *testing.T) {
 	}
 }
 
+// "Open on another device" gives the page's own full address, built from the
+// node name and tailnet; a wrong one would send other devices nowhere.
+func TestOtherDeviceAddress(t *testing.T) {
+	c := newCatalog(&fakeLister{}, &fakeNet{}, "")
+	rec := httptest.NewRecorder()
+	NewHandler(c, "home-1").ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if !strings.Contains(rec.Body.String(), `data-copy="https://home-1.ts.test/"`) {
+		t.Error("page does not offer its own address for other devices")
+	}
+}
+
 func TestEmptyPageGuidance(t *testing.T) {
 	render := func(c *Catalog) string {
 		c.Refresh(t.Context())
@@ -387,7 +398,7 @@ func TestEmptyPageGuidance(t *testing.T) {
 		NewHandler(c, "home").ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 		return rec.Body.String()
 	}
-	const policyHint = "your policy lets this node reach them"
+	const policyHint = "your policy lets this node reach your Services"
 
 	local := newCatalog(&fakeLister{}, &fakeNet{}, "")
 	local.Local = true

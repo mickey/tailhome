@@ -20,21 +20,35 @@
   h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 28px 0 10px; }
   a { color: inherit; text-decoration: none; }
   .meta { color: var(--muted); font-size: 13px; }
-  .meta a { text-decoration: underline; }
+  .meta a, .meta button, .help a, .notices a, .panel .close { text-decoration: underline; text-underline-offset: 2px; }
+  .meta button, .panel .close { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  /* The add panel: a popover, so it needs no script and closes on Escape or an outside click. */
+  .panel { position: fixed; inset: 64px max(20px, calc((100vw - 960px) / 2 + 20px)) auto auto; margin: 0; width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 88px); overflow: auto; padding: 20px 20px 16px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / .14), 0 2px 6px rgb(0 0 0 / .06); }
+  @supports not selector(:popover-open) { .panel { display: none; } } /* older browsers would show it for good */
+  @media (max-width: 520px) { .panel { inset: 12px 12px auto; width: auto; max-height: calc(100dvh - 24px); } }
+  .help h2 { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--fg); }
+  .panel h2 { font-size: 15px; margin: 0 0 4px; }
+  .panel section + section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .help p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+  .help h3 { font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
+  .help ol, .help ul { margin: 0; padding-left: 20px; font-size: 14px; }
+  .help li { margin: 6px 0; padding-left: 2px; }
+  .panel .close { position: absolute; top: 14px; right: 16px; font-size: 13px; color: var(--muted); padding: 4px; }
+  .snippet { display: flex; align-items: flex-start; gap: 12px; width: 100%; margin: 0 0 6px; padding: 10px 12px; font: inherit; color: inherit; text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; cursor: copy; }
+  .snippet code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .snippet .copied { flex: none; font-size: 13px; color: var(--muted); }
+  .snippet .copied.done { color: var(--ok); }
+  li .snippet { margin: 6px 0 0; }
   .error { background: color-mix(in srgb, var(--down) 12%, var(--card)); border: 1px solid var(--down); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
   .notices { list-style: none; margin: 0 0 20px; padding: 0; font-size: 14px; }
   .notices li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; }
   .notices li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); transform: translateY(-1px); }
-  .notices a, .empty a { text-decoration: underline; text-underline-offset: 2px; }
   .empty { max-width: 560px; margin-top: 48px; }
-  .empty h2 { font-size: 18px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--fg); margin: 0 0 6px; }
-  .empty p { margin: 0 0 16px; color: var(--muted); }
-  .empty ul { margin: 0 0 16px; padding-left: 20px; }
-  .empty li { margin: 6px 0; padding-left: 4px; }
+  .empty h2 { font-size: 18px; margin: 0 0 6px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
   .tile { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
-  .tile:hover, .tile:focus-visible { border-color: var(--muted); }
-  .tile:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .tile:hover, .tile:focus-visible, .snippet:hover, .snippet:focus-visible { border-color: var(--muted); }
+  .tile:focus-visible, .snippet:focus-visible, .meta button:focus-visible, .panel .close:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
   .icon { position: relative; flex: none; width: 36px; height: 36px; border-radius: 8px; background: var(--line); display: grid; place-items: center; font-weight: 600; color: color-mix(in srgb, var(--fg) 45%, var(--muted)); text-transform: uppercase; }
   .icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--card); visibility: hidden; }
   .icon img.loaded { visibility: visible; }
@@ -64,7 +78,7 @@
 <main>
   <header>
     <h1>{{.Title}}</h1>
-    <span class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<a href="/?refresh">refresh</a></span>
+    <span class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<a href="/?refresh">refresh</a> · <button type="button" popovertarget="add">add</button></span>
   </header>
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
   {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}
@@ -93,20 +107,35 @@
   </div>
   {{end}}
   {{if and (not .Groups) (not .Other) (not .Error)}}
-  <section class="empty">
+  <section class="empty help">
     <h2>No Services yet</h2>
-    <p>tailhome shows <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Services</a>, not machines.</p>
+    <p>tailhome shows <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Services</a>, not machines. Publish an app as a Service to show it here on the next refresh.</p>
+    {{template "addapp"}}
+    {{if .Local}}
+    <h3>Already have Services?</h3>
     <ul>
-      <li><a href="https://console.tailscale.com/admin/services">Define a Service</a> and give it a host.</li>
-      <li>Or publish Docker containers with <a href="https://github.com/marvinvr/docktail">DockTail</a>.</li>
-      {{if .Local}}
-      <li>Already have Services? Check that your policy lets this node reach them.</li>
+      <li>Check that your policy lets this node reach your Services.</li>
       <li>Still empty? <a href="https://github.com/mickey/tailhome#groups-and-descriptions">Set up an OAuth client</a> to list them through the API.</li>
-      {{end}}
     </ul>
-    <p class="meta">New Services appear within a few minutes.</p>
+    {{end}}
   </section>
   {{end}}
+  <div id="add" class="panel help" popover role="dialog" aria-labelledby="add-title" tabindex="-1" autofocus>
+    <button class="close" type="button" popovertarget="add" popovertargetaction="hide">Close</button>
+    <section>
+      <h2 id="add-title">Add an app</h2>
+      <p>Publish it as a <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Service</a>. It appears here on the next refresh.</p>
+      {{template "addapp"}}
+    </section>
+    <section>
+      <h2>Open on another device</h2>
+      <ol>
+        <li>Install <a href="https://tailscale.com/download">Tailscale</a> and sign in to this tailnet.</li>
+        <li>Open this address:{{template "snippet" .Address}}</li>
+        <li>On a phone, add this page to the home screen to open it like an app.</li>
+      </ol>
+    </section>
+  </div>
 </main>
 <p class="sr" role="status" id="status"></p>
 <script>
@@ -116,7 +145,10 @@
     if (document.visibilityState === "visible" && Date.now() - loaded > 5 * 60 * 1000) location.reload();
   });
   const status = document.getElementById("status");
-  const clearManual = () => document.querySelectorAll(".manual").forEach((n) => n.remove());
+  const clearManual = () => {
+    document.querySelectorAll(".manual").forEach((n) => n.remove());
+    document.querySelectorAll(".snippet .copied:not(.done)").forEach((m) => { m.textContent = m.dataset.idle; });
+  };
   async function copy(value) {
     try { await navigator.clipboard.writeText(value); return true; } catch {}
     // The Clipboard API needs HTTPS; this older path also works on plain HTTP, during a click.
@@ -138,14 +170,22 @@
     if (!el) return;
     const value = el.dataset.copy;
     if (await copy(value)) {
+      // Rows show " · Copied" after their label; snippets swap their "Copy" hint.
       const mark = el.querySelector(".copied");
-      mark.textContent = " · Copied";
+      mark.textContent = mark.dataset.done ?? " · Copied";
+      mark.classList.add("done");
       clearTimeout(mark.timer);
-      mark.timer = setTimeout(() => { mark.textContent = ""; }, 1500);
+      mark.timer = setTimeout(() => { mark.textContent = mark.dataset.idle ?? ""; mark.classList.remove("done"); }, 1500);
       status.textContent = "Copied " + value;
       return;
     }
     // Both paths refused: show the value selected so Ctrl+C or ⌘C copies it.
+    status.textContent = "Copying is blocked. " + value + " is selected: press Command+C or Ctrl+C.";
+    if (el.matches(".snippet")) { // the snippet already shows the whole value
+      getSelection().selectAllChildren(el.querySelector("code"));
+      el.querySelector(".copied").textContent = "Press ⌘C or Ctrl+C";
+      return;
+    }
     const box = document.createElement("div");
     box.className = "manual";
     const code = document.createElement("code");
@@ -155,10 +195,17 @@
     box.append(code, hint);
     el.querySelector(".text").append(box);
     getSelection().selectAllChildren(code);
-    status.textContent = "Copying is blocked here. " + value + " is selected: press Command+C or Ctrl+C.";
   });
 </script>
 </body>
 </html>
 {{define "icon"}}<span class="icon">{{printf "%.1s" .Label}}<img src="{{.Icon}}" alt="" onload="this.classList.add('loaded')"></span>{{end}}
 {{define "dot"}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}
+{{define "snippet"}}<button class="snippet" type="button" data-copy="{{.}}" title="Copy"><code>{{.}}</code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>{{end}}
+{{define "addapp"}}<h3>Docker container with <a href="https://github.com/marvinvr/docktail">DockTail</a></h3>
+{{template "snippet" "labels:\n  - docktail.service.enable=true\n  - docktail.service.name=myapp\n  - docktail.service.port=8080"}}
+<p>With an OAuth client, DockTail also defines the Service. Without one, define it on the Services page first.</p>
+<h3>Any app with tailscale serve</h3>
+<p>Define <code>svc:myapp</code> with port <code>443</code> on the <a href="https://console.tailscale.com/admin/services">Services page</a>, then run this on a tagged machine:</p>
+{{template "snippet" "tailscale serve --service=svc:myapp --https=443 127.0.0.1:8080"}}
+<p>Then approve the machine on the Services page. The setting survives restarts; keep the app running with Docker or systemd.</p>{{end}}
