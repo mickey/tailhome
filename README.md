@@ -302,6 +302,7 @@ Without Docker, set the same two variables before starting tailhome.
 | tailhome exits with `joining the tailnet: creating an auth key for tag:tailhome: …` | Give the OAuth client Auth Keys: Write for `tag:tailhome` and add the tag to `tagOwners`. |
 | "Refresh failed: …" mentions `oauth2` or `403` | Give the OAuth client Services: Read. |
 | A dot is red but the Service opens | Check whether policy lets tailhome reach the Service. With OAuth, add the grants from step 1. |
+| `home/` stopped loading after months | Without credentials, the node's key expired. Restart tailhome, open the login link in its logs, and disable key expiry on the [Machines](https://console.tailscale.com/admin/machines) page. |
 | An override has no effect | Check the logs for a name warning, and that `TAILHOME_OVERRIDES` points at the file: a missing file counts as no overrides. |
 | "Refresh failed: … permission denied" | Make the overrides file readable (`chmod 644`). |
 
