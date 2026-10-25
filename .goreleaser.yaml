@@ -60,3 +60,4 @@ dockers_v2:
       org.opencontainers.image.description: Start page built from your Tailscale Services
 release:
   prerelease: auto
+  header: "{{ .TagBody }}" # the annotated tag's message, above the list of commits
