@@ -27,7 +27,7 @@ tailhome is pre-1.0 with one maintainer, who runs it daily. Settings and default
 
 ## Why tailhome
 
-tailhome is a launcher, not a dashboard. It has no widgets, feeds or server stats; [Homepage](https://gethomepage.dev) and [Glance](https://github.com/glanceapp/glance) do those well, and tailhome can [feed them its app list](docs/customize.md#homepage-and-glance). There is nothing to declare: a Service published with `tailscale serve`, [DockTail or TSDProxy](docs/apps.md#publish-container-apps) appears on the next refresh. tailhome does not scan ports, read Docker labels or look behind a reverse proxy.
+tailhome is a launcher, not a dashboard. It has no widgets, feeds or server stats; [Homepage](https://gethomepage.dev) and [Glance](https://github.com/glanceapp/glance) do those well, and tailhome can [feed them its app list](docs/customize.md#homepage-and-glance). You keep no separate app list: a Service published with `tailscale serve`, [DockTail or TSDProxy](docs/apps.md#publish-container-apps) appears on the next refresh. tailhome does not scan ports, read Docker labels or look behind a reverse proxy.
 
 ## Which apps appear
 
