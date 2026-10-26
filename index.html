@@ -86,7 +86,7 @@
   <h2>{{.Name}}</h2>
   <div class="grid">
     {{range .Entries}}
-    <a class="tile" href="{{link .URL}}" title="Open {{.Host}}">
+    <a class="tile" href="{{link .URL}}" title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}</div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}</div>
       {{template "dot" .}}
@@ -108,14 +108,14 @@
   {{end}}
   {{if and (not .Groups) (not .Other) (not .Error)}}
   <section class="empty help">
-    <h2>No Services yet</h2>
-    <p>tailhome shows <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Services</a>, not machines. Publish an app as a Service to show it here on the next refresh.</p>
+    <h2>No apps yet</h2>
+    <p>tailhome shows <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Services</a> and apps on their own tailnet devices.</p>
     {{template "addapp"}}
     {{if .Local}}
     <h3>Already have Services?</h3>
     <ul>
       <li>Check that your policy lets this node reach your Services.</li>
-      <li>Still empty? <a href="https://github.com/mickey/tailhome#groups-and-descriptions">Set up an OAuth client</a> to list them through the API.</li>
+      <li>Still empty? <a href="https://github.com/mickey/tailhome/blob/main/docs/setup.md#set-up-oauth">Set up an OAuth client</a> to list them through the API.</li>
     </ul>
     {{end}}
   </section>
@@ -124,7 +124,7 @@
     <button class="close" type="button" popovertarget="add" popovertargetaction="hide">Close</button>
     <section>
       <h2 id="add-title">Add an app</h2>
-      <p>Publish it as a <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Service</a>. It appears here on the next refresh.</p>
+      <p>Publish it as a <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Service</a>, or run it on its own tailnet device. It appears here on the next refresh.</p>
       {{template "addapp"}}
     </section>
     <section>
@@ -208,4 +208,6 @@
 <h3>Any app with tailscale serve</h3>
 <p>Define <code>svc:myapp</code> with port <code>443</code> on the <a href="https://console.tailscale.com/admin/services">Services page</a>, then run this on a tagged machine:</p>
 {{template "snippet" "tailscale serve --service=svc:myapp --https=443 127.0.0.1:8080"}}
-<p>Then approve the machine on the Services page. The setting survives restarts; keep the app running with Docker or systemd.</p>{{end}}
+<p>Then approve the machine on the Services page. The setting survives restarts; keep the app running with Docker or systemd.</p>
+<h3>App on its own tailnet device</h3>
+<p>If the app answers <code>https://&lt;device&gt;.&lt;tailnet&gt;.ts.net/</code> on port 443 with a valid Tailscale certificate (TSDProxy v2, tsbridge, ScaleTail, <code>tailscale serve</code> on the device) and tailhome's node may reach it, it appears here on the next refresh. Other ports and paths are not discovered.</p>{{end}}

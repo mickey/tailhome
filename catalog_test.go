@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -171,21 +172,21 @@ func TestClassificationAndHealth(t *testing.T) {
 		{"jellyfin", "Media", "http://jellyfin.ts.test/", StatusUp},
 		// A web Service that does not answer stays a tile, marked down.
 		{"offline", "Media", "http://offline.ts.test/", StatusDown},
-		{"broken", "Services", "http://broken.ts.test/", StatusDown},
+		{"broken", "Apps", "http://broken.ts.test/", StatusDown},
 		// Unusual port that answers HTTP is detected as web; a redirect counts as up.
 		{"grafana", "Home Lab", "http://grafana.ts.test:3000/", StatusUp},
 		{"postgres", "Other", "", StatusUp},
 		{"redis", "Other", "", StatusDown},
 		// Any HTTP answer makes a Service web, even a 503 on first discovery.
-		{"queue", "Services", "http://queue.ts.test:15672/", StatusDown},
+		{"queue", "Apps", "http://queue.ts.test:15672/", StatusDown},
 		// Self-signed certificates count as reachable.
-		{"proxmox", "Services", "https://proxmox.ts.test:8006/", StatusUp},
+		{"proxmox", "Apps", "https://proxmox.ts.test:8006/", StatusUp},
 		// A port range is probed on its first port.
-		{"ranged", "Services", "http://ranged.ts.test:8000/", StatusUp},
+		{"ranged", "Apps", "http://ranged.ts.test:8000/", StatusUp},
 		// tcp:* covers 443.
-		{"wildcard", "Services", "https://wildcard.ts.test/", StatusUp},
+		{"wildcard", "Apps", "https://wildcard.ts.test/", StatusUp},
 		// Without a usable port, the default web ports are probed.
-		{"console", "Services", "http://console.ts.test/", StatusUp},
+		{"console", "Apps", "http://console.ts.test/", StatusUp},
 		// SSH and VNC are not web: they land under Other, checked over TCP.
 		{"shell", "Other", "", StatusUp},
 		{"screen", "Other", "", StatusUp},
@@ -228,7 +229,7 @@ func TestDetectedWebServiceStaysTileWhenDown(t *testing.T) {
 	c.Refresh(t.Context())
 
 	entries, sections := index(c.View())
-	if sections["grafana"] != "Services" || entries["grafana"].Status != StatusDown {
+	if sections["grafana"] != "Apps" || entries["grafana"].Status != StatusDown {
 		t.Fatalf("got section=%q status=%s, want tile marked down", sections["grafana"], entries["grafana"].Status)
 	}
 }
@@ -405,21 +406,21 @@ func TestEmptyPageGuidance(t *testing.T) {
 	notices := []Notice{{Text: "expires <soon>", LinkText: "Open the Machines page", URL: "https://console.tailscale.com/admin/machines"}}
 	local.Notices = func(context.Context) []Notice { return notices }
 	body := render(local)
-	if !strings.Contains(body, "No Services yet") || !strings.Contains(body, policyHint) {
+	if !strings.Contains(body, "No apps yet") || !strings.Contains(body, policyHint) {
 		t.Errorf("local empty page lacks its guidance: %s", body)
 	}
 	if !strings.Contains(body, "expires &lt;soon&gt;") || !strings.Contains(body, `<a href="https://console.tailscale.com/admin/machines">Open the Machines page</a>`) {
 		t.Errorf("notice not rendered escaped with its link: %s", body)
 	}
 
-	if body := render(newCatalog(&fakeLister{}, &fakeNet{}, "")); !strings.Contains(body, "No Services yet") || strings.Contains(body, policyHint) {
+	if body := render(newCatalog(&fakeLister{}, &fakeNet{}, "")); !strings.Contains(body, "No apps yet") || strings.Contains(body, policyHint) {
 		t.Errorf("OAuth empty page: want guidance without the local-mode hints: %s", body)
 	}
-	if body := render(newCatalog(&fakeLister{err: errors.New("api down")}, &fakeNet{}, "")); strings.Contains(body, "No Services yet") {
+	if body := render(newCatalog(&fakeLister{err: errors.New("api down")}, &fakeNet{}, "")); strings.Contains(body, "No apps yet") {
 		t.Error("empty-state guidance shown over a refresh error")
 	}
 	listed := &fakeLister{services: []tsapi.Service{{Name: "svc:db", Ports: []string{"tcp:5432"}}}}
-	if body := render(newCatalog(listed, &fakeNet{}, "")); strings.Contains(body, "No Services yet") {
+	if body := render(newCatalog(listed, &fakeNet{}, "")); strings.Contains(body, "No apps yet") {
 		t.Error("empty-state guidance shown with Services listed")
 	}
 }
@@ -444,6 +445,27 @@ func TestNoticesClearAfterFix(t *testing.T) {
 	c.Refresh(t.Context())
 	if got := c.View().Notices; len(got) != 1 || strings.Contains(got[0].Text, "expires") {
 		t.Errorf("after disabling expiry: got %+v, want only the name notice", got)
+	}
+}
+
+func TestEnvTags(t *testing.T) {
+	for _, tt := range []struct {
+		value string
+		want  []string
+		bad   bool
+	}{
+		{"", nil, false},
+		{" \t ", nil, false},
+		{" tag:app ,\t tag:nas, ", []string{"tag:app", "tag:nas"}, false},
+		{"app", nil, true},
+		{"tag:", nil, true},
+		{"tag:app,nas", nil, true},
+	} {
+		t.Setenv("TAILHOME_DEVICE_TAGS", tt.value)
+		got, err := envTags("TAILHOME_DEVICE_TAGS")
+		if (err != nil) != tt.bad || !slices.Equal(got, tt.want) {
+			t.Errorf("%q: got %v, %v; want %v, error=%v", tt.value, got, err, tt.want, tt.bad)
+		}
 	}
 }
 
@@ -488,7 +510,7 @@ wild:
 	c.Refresh(t.Context())
 
 	entries, sections := index(c.View())
-	if e := entries["pinned"]; sections["pinned"] != "Services" || e.Status != StatusDown {
+	if e := entries["pinned"]; sections["pinned"] != "Apps" || e.Status != StatusDown {
 		t.Errorf("web: true: got section=%q status=%s, want tile marked down", sections["pinned"], e.Status)
 	}
 	if e := entries["vnc"]; e.URL != "vnc://vnc.ts.test:5900" || e.Status != StatusUp {

@@ -13,6 +13,7 @@ import (
 
 	"tailscale.com/client/local"
 	tsapi "tailscale.com/client/tailscale/v2"
+	"tailscale.com/tailcfg"
 )
 
 // ServiceLister is implemented by *tsapi.ServicesResource and localServices.
@@ -57,6 +58,7 @@ type Notice struct {
 
 type Entry struct {
 	Name        string   `json:"name"`
+	Source      string   `json:"source"`
 	Label       string   `json:"label"`
 	Description string   `json:"description,omitempty"`
 	Group       string   `json:"group"`
@@ -85,7 +87,7 @@ type View struct {
 	Notices []Notice  `json:"notices,omitempty"`
 }
 
-// all flattens the page in order, one Entry per Service: a web Service's
+// all flattens the page in order, one Entry per tile: a web Service's
 // copy row under Other repeats its tile and is skipped.
 func (v View) all() []Entry {
 	all := []Entry{} // never nil: /api/list.json encodes [] rather than null
@@ -105,19 +107,27 @@ func (v View) all() []Entry {
 }
 
 type Catalog struct {
-	Services      ServiceLister
-	OverridesPath string
-	DNSSuffix     string
-	Self          string // own Service, left off the page
-	Prober        *Prober
-	Local         bool                           // listing from the netmap, without API credentials
-	Notices       func(context.Context) []Notice // setup problems, rechecked on every refresh; may be nil
-	Icons         *Icons                         // matches names to icons; nil uses names as-is
+	Services        ServiceLister
+	OverridesPath   string
+	DNSSuffix       string
+	Self            string // own Service, left off the page
+	Prober          *Prober
+	Local           bool                           // listing from the netmap, without API credentials
+	Notices         func(context.Context) []Notice // setup problems, rechecked on every refresh; may be nil
+	Icons           *Icons                         // matches names to icons; nil uses names as-is
+	Devices         DeviceLister                   // nil: discovery off
+	DeviceTags      []string                       // TAILHOME_DEVICE_TAGS; empty tries every member
+	InsecureTLSTags []string                       // TAILHOME_DEVICE_INSECURE_TLS_TAGS; members with one skip certificate verification
+	DeviceProber    *DeviceProber                  // required when Devices is set
 
-	refreshMu   sync.Mutex        // serializes refreshes; guards detected, lastAttempt, warned
-	detected    map[string]string // Service name → URL that once answered HTTP
-	lastAttempt time.Time
-	warned      map[string]bool
+	refreshMu      sync.Mutex        // serializes refreshes; guards discovery state, lastAttempt, warned
+	detected       map[string]string // Service name → URL that once answered HTTP
+	lastAttempt    time.Time
+	warned         map[string]bool
+	admitted       map[tailcfg.StableNodeID]Device // devices that once answered, as last listed
+	cursor         string                          // DNSName of the last candidate started; the next scan resumes after it
+	devicesFailing bool                            // last listing failed; logged on transition
+	scanBudget     time.Duration                   // zero uses the ten-second candidate scan budget
 
 	mu   sync.RWMutex // guards view
 	view View
@@ -206,12 +216,14 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 
 	var entries []Entry
 	selfFound := false
+	reserved := make(map[string]bool, len(services))
 	for _, svc := range services {
+		name := strings.TrimPrefix(svc.Name, "svc:")
+		reserved[name] = true
 		if svc.Name == c.Self {
 			selfFound = true
 			continue
 		}
-		name := strings.TrimPrefix(svc.Name, "svc:")
 		o := overrides[name]
 		if o.Hidden {
 			continue
@@ -233,15 +245,17 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 	if len(services) == 0 {
 		c.warnOnce("empty", "warning: no Services to list: define some on the Services page of the admin console; without an OAuth client, also check that your policy lets this node reach them")
 	}
-	for name := range overrides {
-		if !slices.ContainsFunc(services, func(s tsapi.Service) bool { return s.Name == "svc:"+name }) {
-			c.warnOnce("override:"+name, "warning: overrides file names %s, which is not a Service", name)
-		}
-	}
 
-	c.Prober.Check(ctx, entries)
+	c.Prober.Check(ctx, entries) // Services only: the insecure Service client must never vouch for a device, so device entries come after, already checked
+	deviceEntries, members := c.refreshDevices(ctx, reserved, overrides)
+	entries = append(entries, deviceEntries...)
 	if err := ctx.Err(); err != nil { // shutting down: don't publish a view of failed probes
 		return View{}, err
+	}
+	for name := range overrides {
+		if !reserved[name] && !members[name] && !c.devicesFailing {
+			c.warnOnce("override:"+name, "warning: overrides file names %s, which is not a Service or device", name)
+		}
 	}
 
 	prev := map[string]Status{}
@@ -286,7 +300,7 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 	slices.SortFunc(view.Groups, func(a, b Group) int { return cmp.Compare(a.Name, b.Name) })
 	sortEntries(view.Other)
 	if len(entries) != len(prev) {
-		log.Printf("listing %d Services", len(entries))
+		log.Printf("listing %d apps", len(entries))
 	}
 	return view, nil
 }
@@ -295,9 +309,10 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 func newEntry(name, suffix string, svc tsapi.Service, o Override) Entry {
 	e := Entry{
 		Name:        name,
+		Source:      "service",
 		Label:       cmp.Or(o.Label, svc.DisplayName, titleCase(name)),
 		Description: cmp.Or(o.Description, svc.Comment),
-		Group:       cmp.Or(o.Group, groupFromTags(svc.Tags), "Services"),
+		Group:       cmp.Or(o.Group, groupFromTags(svc.Tags), "Apps"),
 		Icon:        iconURL(cmp.Or(o.Icon, name)),
 		Host:        name + "." + suffix,
 		Ports:       svc.Ports,

@@ -25,8 +25,9 @@ func NewProber(dial func(ctx context.Context, network, addr string) (net.Conn, e
 	return &Prober{
 		client: &http.Client{
 			Transport: &http.Transport{
-				DialContext:       dial,
-				DisableKeepAlives: true,
+				DialContext:         dial,
+				TLSHandshakeTimeout: 5 * time.Second,
+				DisableKeepAlives:   true,
 				// Reachability check only: self-signed backends count as up.
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},
@@ -59,7 +60,7 @@ func (p *Prober) check(ctx context.Context, e *Entry) {
 		u, err := url.Parse(e.URL)
 		switch {
 		case err == nil && (u.Scheme == "http" || u.Scheme == "https"):
-			_, e.Status, e.Reason = p.httpCheck(ctx, e.URL)
+			_, e.Status, e.Reason = httpCheck(ctx, p.client, e.URL)
 		case err == nil && u.Port() != "": // e.g. a vnc://host:5900 override
 			e.Status, e.Reason = p.dialCheck(ctx, u.Host)
 		default: // a link without a port, such as ssh://host: check the Service's own
@@ -81,7 +82,7 @@ func (p *Prober) check(ctx context.Context, e *Entry) {
 	// Any HTTP answer, even a 503, makes the Service web; its code decides health.
 	var reason string
 	for _, u := range candidates {
-		answered, status, r := p.httpCheck(ctx, u)
+		answered, status, r := httpCheck(ctx, p.client, u)
 		if answered {
 			e.URL, e.Status, e.Reason = u, status, r
 			return
@@ -96,12 +97,12 @@ func (p *Prober) check(ctx context.Context, e *Entry) {
 }
 
 // httpCheck treats 5xx as down: `tailscale serve` answers 502 when its backend is gone.
-func (p *Prober) httpCheck(ctx context.Context, u string) (answered bool, s Status, reason string) {
+func httpCheck(ctx context.Context, client *http.Client, u string) (answered bool, s Status, reason string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return false, StatusDown, err.Error()
 	}
-	resp, err := p.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err

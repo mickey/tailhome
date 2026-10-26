@@ -1,4 +1,5 @@
-# Keys are Service names, with or without the svc: prefix. Every field is optional.
+# Keys are Service or device names; Services also accept the svc: prefix.
+# Every field is optional. web and copy apply only to Services.
 jellyfin:
   group: Media
   order: -10                # lower sorts first; unset counts as 0, ties sort by label
@@ -8,7 +9,7 @@ grafana:
   icon: grafana             # a dashboard-icons name, or a full image URL
   url: https://grafana.example.ts.net/d/main
 nas:
-  url: vnc://nas.example.ts.net:5900   # also ssh, rdp, smb, ftp, sftp, telnet; TCP-checked
+  url: vnc://nas.example.ts.net:5900   # Services: TCP-checked; devices: link only, HTTPS root still checked
 whoami:
   web: true                 # always a tile, even before it answers HTTP
 pgadmin:
@@ -17,3 +18,5 @@ gitea:
   copy: git@gitea.example.ts.net   # what a click copies; on a web Service, adds a row under "Other"
 postgres:
   hidden: true
+paperless-ngx:
+  label: Paperless

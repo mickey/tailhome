@@ -1,4 +1,4 @@
-// Command tailhome serves a start page for a tailnet's Tailscale Services.
+// Command tailhome serves the start page that builds itself from your tailnet.
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	tsapi "tailscale.com/client/tailscale/v2"
 	"tailscale.com/ipn/ipnstate"
@@ -33,6 +34,11 @@ func init() {
 }
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintln(flag.CommandLine.Output(), "The start page that builds itself from your tailnet.")
+		fmt.Fprintf(flag.CommandLine.Output(), "\nUsage: %s [flags]\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -57,6 +63,18 @@ func run() error {
 	refresh, err := time.ParseDuration(env("TAILHOME_REFRESH", "5m"))
 	if err != nil || refresh <= 0 {
 		return fmt.Errorf("TAILHOME_REFRESH must be a positive duration, got %q", os.Getenv("TAILHOME_REFRESH"))
+	}
+	devicesOn := env("TAILHOME_DEVICES", "on")
+	if devicesOn != "on" && devicesOn != "off" {
+		return fmt.Errorf("TAILHOME_DEVICES must be on or off, got %q", devicesOn)
+	}
+	deviceTags, err := envTags("TAILHOME_DEVICE_TAGS")
+	if err != nil {
+		return err
+	}
+	insecureTLSTags, err := envTags("TAILHOME_DEVICE_INSECURE_TLS_TAGS")
+	if err != nil {
+		return err
 	}
 	log.Printf("tailhome %s", version)
 
@@ -106,6 +124,10 @@ func run() error {
 		}
 		return fmt.Errorf("joining the tailnet: %w", err)
 	}
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return err
+	}
 
 	var (
 		httpsLn, httpLn net.Listener
@@ -135,10 +157,6 @@ func run() error {
 			return fmt.Errorf("listening on port 80: %w", err)
 		}
 		fqdn = srv.CertDomains()[0] // ListenTLS fails when there is none
-		lc, err := srv.LocalClient()
-		if err != nil {
-			return err
-		}
 		services = localServices{lc}
 		hostname := srv.Hostname
 		for _, n := range nodeNotices(st.Self, hostname) {
@@ -164,14 +182,20 @@ func run() error {
 
 	icons := &Icons{Fetch: fetchIconNames}
 	catalog := &Catalog{
-		Services:      services,
-		OverridesPath: env("TAILHOME_OVERRIDES", "overrides.yaml"),
-		DNSSuffix:     dnsSuffix,
-		Self:          self,
-		Prober:        NewProber(srv.Dial),
-		Local:         !apiMode,
-		Notices:       notices,
-		Icons:         icons,
+		Services:        services,
+		OverridesPath:   env("TAILHOME_OVERRIDES", "overrides.yaml"),
+		DNSSuffix:       dnsSuffix,
+		Self:            self,
+		Prober:          NewProber(srv.Dial),
+		Local:           !apiMode,
+		Notices:         notices,
+		Icons:           icons,
+		DeviceTags:      deviceTags,
+		InsecureTLSTags: insecureTLSTags,
+		DeviceProber:    &DeviceProber{dial: srv.Dial},
+	}
+	if devicesOn == "on" {
+		catalog.Devices = localDevices{lc}
 	}
 	icons.Loaded = func() { catalog.Refresh(ctx) } // show the matched icons now, not at the next refresh
 	go catalog.Run(ctx, refresh)
@@ -201,6 +225,17 @@ func redirectTo(base string) http.Handler {
 
 func env(key, fallback string) string {
 	return cmp.Or(os.Getenv(key), fallback)
+}
+
+// envTags parses a comma-separated tag list; whitespace around tags is ignored.
+func envTags(key string) ([]string, error) {
+	tags := strings.FieldsFunc(os.Getenv(key), func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+	for _, tag := range tags {
+		if !strings.HasPrefix(tag, "tag:") || tag == "tag:" {
+			return nil, fmt.Errorf("%s must list tags starting with tag:, got %q", key, tag)
+		}
+	}
+	return tags, nil
 }
 
 // nodeNotices reports problems with this node that the admin can fix: a name

@@ -101,7 +101,7 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	return mux
 }
 
-// shortcut returns the URL of the tile with this Service name, ignoring case.
+// shortcut returns the URL of the tile with this Service or device name, ignoring case.
 // Only tile URLs qualify, so /go/ can't redirect anywhere else. A prefix
 // doesn't match: a bookmark must not break when a similar name appears.
 func shortcut(v View, name string) string {
