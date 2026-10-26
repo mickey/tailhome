@@ -33,6 +33,10 @@ func init() {
 	}
 }
 
+// userAgent names tailhome in app logs, so admins can tell its requests apart and allow them.
+// It is a func because version is final only after init.
+func userAgent() string { return "tailhome/" + version + " (+https://github.com/mickey/tailhome)" }
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintln(flag.CommandLine.Output(), "The start page that builds itself from your tailnet.")

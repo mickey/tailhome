@@ -100,6 +100,7 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	mux.HandleFunc("GET /go/{name}/{$}", goTo) // pasted with a trailing slash
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Icon requests to jsDelivr would otherwise carry the page's address, which names the tailnet.
+		// nosniff keeps browsers from reading JSON or icons as HTML.
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		mux.ServeHTTP(w, r)

@@ -353,13 +353,16 @@ db:
 
 // The page links to jsDelivr for icons; it must not send its own address, which names the tailnet.
 func TestPageHeaders(t *testing.T) {
-	rec := httptest.NewRecorder()
-	NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start").ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
-	if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
-		t.Errorf("Referrer-Policy %q, want same-origin", got)
-	}
-	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
-		t.Errorf("X-Content-Type-Options %q, want nosniff", got)
+	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
+	for _, target := range []string{"/", "/api/list.json", "/go/nope"} { // pages, JSON and errors alike
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+		if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
+			t.Errorf("%s: Referrer-Policy %q, want same-origin", target, got)
+		}
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("%s: X-Content-Type-Options %q, want nosniff", target, got)
+		}
 	}
 }
 
