@@ -1,4 +1,4 @@
-# Keys are Service or device names; Services also accept the svc: prefix.
+# Keys are Service or device names; the svc: prefix is optional.
 # Every field is optional. web and copy apply only to Services.
 jellyfin:
   group: Media

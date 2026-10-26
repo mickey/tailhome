@@ -33,7 +33,7 @@ Make the file readable (`chmod 644`) and its directories traversable by tailhome
 
 Set `TAILHOME_OVERRIDES` to use another path. Without Docker, the default is `overrides.yaml` in the working directory. Edits take effect on refresh without a restart.
 
-Keys are case-sensitive Service or device names, without `svc:`. Check logs for misspelled names or invalid fields if a refresh fails. `web` and `copy` apply only to Services; see [how Services become tiles](apps.md#services).
+Keys are case-sensitive Service or device names; the `svc:` prefix is optional, so `jellyfin` and `svc:jellyfin` name the same Service and cannot both appear. Check logs for misspelled names or invalid fields if a refresh fails. `web` and `copy` apply only to Services; see [how Services become tiles](apps.md#services).
 
 ## URL schemes
 
