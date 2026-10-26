@@ -21,6 +21,7 @@
   a { color: inherit; text-decoration: none; }
   .meta { color: var(--muted); font-size: 13px; }
   .meta a, .meta button, .help a, .notices a, .panel .close { text-decoration: underline; text-underline-offset: 2px; }
+  .meta form { display: inline; }
   .meta button, .panel .close { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
   /* The add panel: a popover, so it needs no script and closes on Escape or an outside click. */
   .panel { position: fixed; inset: 64px max(20px, calc((100vw - 960px) / 2 + 20px)) auto auto; margin: 0; width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 88px); overflow: auto; padding: 20px 20px 16px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / .14), 0 2px 6px rgb(0 0 0 / .06); }
@@ -78,7 +79,7 @@
 <main>
   <header>
     <h1>{{.Title}}</h1>
-    <span class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<a href="/?refresh">refresh</a> · <button type="button" popovertarget="add">add</button></span>
+    <div class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<form method="post" action="/refresh"><button>refresh</button></form> · <button type="button" popovertarget="add">add</button></div>
   </header>
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
   {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}

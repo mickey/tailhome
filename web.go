@@ -54,12 +54,6 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	address := "https://" + title + "." + c.DNSSuffix + "/"
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Has("refresh") {
-			// A closed tab must not cancel probes and paint everything red.
-			c.RefreshIfOlder(context.WithoutCancel(r.Context()), minManualRefresh)
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data := struct {
 			Title   string
@@ -71,6 +65,12 @@ func NewHandler(c *Catalog, title string) http.Handler {
 			log.Printf("render: %v", err)
 		}
 	})
+	// A refresh probes every device, so another site must not trigger one through a visitor's browser.
+	mux.Handle("POST /refresh", http.NewCrossOriginProtection().Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A closed tab must not cancel probes and paint everything red.
+		c.RefreshIfOlder(context.WithoutCancel(r.Context()), minManualRefresh)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	})))
 	mux.HandleFunc("GET /api/services.json", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, c.View())
 	})

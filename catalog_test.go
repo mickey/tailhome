@@ -484,6 +484,35 @@ func TestEnvTags(t *testing.T) {
 	}
 }
 
+// A refresh probes every device, so another site must not trigger one through a visitor's browser.
+func TestRefreshRejectsOtherSites(t *testing.T) {
+	lister := &fakeLister{}
+	c := newCatalog(lister, &fakeNet{}, "")
+	h := NewHandler(c, "home")
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		want    int
+	}{
+		{"own page", map[string]string{"Sec-Fetch-Site": "same-origin"}, http.StatusSeeOther},
+		{"own page, old browser", map[string]string{"Origin": "https://home.ts.test"}, http.StatusSeeOther},
+		{"another site", map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
+		{"another app on the tailnet", map[string]string{"Sec-Fetch-Site": "same-site"}, http.StatusForbidden},
+		{"another site, old browser", map[string]string{"Origin": "https://evil.test"}, http.StatusForbidden},
+	} {
+		lister.calls, c.lastAttempt = 0, time.Time{} // no throttle carried over from the previous case
+		req := httptest.NewRequest("POST", "https://home.ts.test/refresh", nil)
+		for k, v := range tc.headers {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if refreshed := lister.calls == 1; rec.Code != tc.want || refreshed != (tc.want == http.StatusSeeOther) {
+			t.Errorf("%s: %d, refreshed %v; want %d", tc.name, rec.Code, refreshed, tc.want)
+		}
+	}
+}
+
 func TestManualRefreshThrottledDuringOutage(t *testing.T) {
 	lister := &fakeLister{err: errors.New("api down")}
 	c := newCatalog(lister, &fakeNet{}, "")
