@@ -106,12 +106,15 @@ func serveDeviceTLS(t *testing.T, cert tls.Certificate, handler http.Handler) st
 }
 
 // serve answers https://<name>/ with status and asserts the probe's request
-// contract: GET /, Host and SNI = name, redirects not followed.
+// contract: GET /, Host and SNI = name, tailhome named in User-Agent, redirects not followed.
 func (ca *deviceCA) serve(t *testing.T, name string, status int) string {
 	t.Helper()
 	return serveDeviceTLS(t, ca.leaf(t, name, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/" || r.Host != name || r.TLS.ServerName != name {
 			t.Errorf("got %s %s%s SNI %s, want GET %s/", r.Method, r.Host, r.URL.Path, r.TLS.ServerName, name)
+		}
+		if !strings.HasPrefix(r.UserAgent(), "tailhome/") {
+			t.Errorf("User-Agent %q does not name tailhome", r.UserAgent())
 		}
 		w.Header().Set("Location", "https://"+name+"/elsewhere")
 		w.WriteHeader(status)

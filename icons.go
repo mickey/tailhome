@@ -99,6 +99,7 @@ func fetchIconNames(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", userAgent())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

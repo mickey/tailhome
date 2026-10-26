@@ -96,12 +96,16 @@ func (p *Prober) check(ctx context.Context, e *Entry) {
 	e.Status, e.Reason = tcpStatus, tcpReason
 }
 
+// userAgent names tailhome in app logs, so admins can tell its checks apart and allow them.
+func userAgent() string { return "tailhome/" + version + " (+https://github.com/mickey/tailhome)" }
+
 // httpCheck treats 5xx as down: `tailscale serve` answers 502 when its backend is gone.
 func httpCheck(ctx context.Context, client *http.Client, u string) (answered bool, s Status, reason string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return false, StatusDown, err.Error()
 	}
+	req.Header.Set("User-Agent", userAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		if ue, ok := errors.AsType[*url.Error](err); ok {
