@@ -1,5 +1,5 @@
 name: Setup problem
-description: tailhome doesn't start, or the page is empty or unreachable.
+description: tailhome doesn't start, the page is empty or unreachable, or an app is missing.
 title: "Setup: "
 labels: [setup]
 body:
@@ -25,8 +25,9 @@ body:
       options:
         - tailhome exits or never logs "serving https://…"
         - The page doesn't load
-        - The page loads but lists no Services
+        - The page loads but lists no apps
         - Some Services are missing or red
+        - A device app doesn't appear, or one appears that shouldn't
         - Something else
     validations:
       required: true
@@ -69,8 +70,10 @@ body:
   - type: textarea
     id: services
     attributes:
-      label: Services
-      description: What `tailscale service list` shows on the device you browse from, if your Tailscale has that command (1.102 or later).
+      label: Services and devices
+      description: |
+        What `tailscale service list` shows on the device you browse from, if your Tailscale has that command (1.102 or later).
+        For a device app: its tailnet name and what `curl -sI https://<device>.<tailnet>.ts.net/` prints from a tailnet machine.
       render: text
 
   - type: textarea
