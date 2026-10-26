@@ -6,4 +6,4 @@ Do not publish exploit details or secrets in a public issue.
 
 ## Security scope
 
-tailhome has no login of its own: whoever can reach it under your tailnet's access policy (the `home` node, or `svc:home` with an OAuth client) sees every listed Service, as described in the README's [Security and privacy](README.md#security-and-privacy). Hiding a Service in tailhome only removes it from the page; it does not restrict access to that Service. Keep OAuth credentials, auth keys, and persistent state private, and redact them from reports.
+tailhome has no login of its own: whoever can reach it under your tailnet's access policy (the `home` node, or `svc:home` with an OAuth client) sees every listed Service and device, as described in the README's [Security and privacy](README.md#security-and-privacy). Hiding a Service or device removes it from the page and the JSON lists; it does not restrict access to it. Keep OAuth credentials, auth keys, and persistent state private, and redact them from reports.

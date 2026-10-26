@@ -34,7 +34,6 @@ archives:
         formats: [zip]
     files:
       - LICENSE
-      - README.md
       - overrides.example.yaml
 checksum:
   name_template: checksums.txt
@@ -57,7 +56,7 @@ dockers_v2:
       org.opencontainers.image.version: "{{.Version}}"
       org.opencontainers.image.revision: "{{.FullCommit}}"
       org.opencontainers.image.created: "{{.Date}}"
-      org.opencontainers.image.description: Start page built from your Tailscale Services
+      org.opencontainers.image.description: The start page that builds itself from your tailnet.
 release:
   prerelease: auto
   header: "{{ .TagBody }}" # the annotated tag's message, above the list of commits

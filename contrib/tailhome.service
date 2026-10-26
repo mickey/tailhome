@@ -1,5 +1,5 @@
 [Unit]
-Description=tailhome start page for Tailscale Services
+Description=tailhome, the start page that builds itself from your tailnet
 Wants=network-online.target
 After=network-online.target
 # tailhome needs the network on every start: keep retrying after a network-less boot.

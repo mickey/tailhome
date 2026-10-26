@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for trying tailhome. Check [Troubleshooting](https://github.com/mickey/tailhome#troubleshooting) first: it covers the common causes.
+        Thanks for trying tailhome. Check [Troubleshooting](https://github.com/mickey/tailhome/blob/main/docs/troubleshooting.md) first: it covers the common causes.
 
   - type: dropdown
     id: mode
