@@ -98,7 +98,12 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	}
 	mux.HandleFunc("GET /go/{name}", goTo)
 	mux.HandleFunc("GET /go/{name}/{$}", goTo) // pasted with a trailing slash
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Icon requests to jsDelivr would otherwise carry the page's address, which names the tailnet.
+		w.Header().Set("Referrer-Policy", "same-origin")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // shortcut returns the URL of the tile with this Service or device name, ignoring case.
