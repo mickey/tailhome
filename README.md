@@ -104,7 +104,7 @@ See [all fields](docs/customize.md) and [`overrides.example.yaml`](overrides.exa
 > Anyone who can open tailhome sees every listed app and its status, on the page and both JSON endpoints, including apps their own access rules block. Restrict access to tailhome accordingly. Hiding an entry removes it from these lists; it does not change access to the app.
 
 - Every five minutes by default, tailhome sends `GET /` on port 443 to every device it may reach in your tailnet, other members' laptops and phones included, and checks each listed app. Requests name `tailhome` in their User-Agent. Set `TAILHOME_DEVICE_TAGS` to limit which devices it tries, or `TAILHOME_DEVICES=off`.
-- Browsers load icons from `cdn.jsdelivr.net`, which sees the icon names but not the page address; tailhome downloads the icon list from there daily. Set your own `icon` URLs to serve the icons elsewhere.
+- Icons load from `cdn.jsdelivr.net`. To avoid it, set `icon` overrides to your own URLs.
 - Like other Tailscale nodes, tailhome uploads diagnostic logs to Tailscale. Set `TS_NO_LOGS_NO_SUPPORT=true` to stop uploads.
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under [MIT](LICENSE).
