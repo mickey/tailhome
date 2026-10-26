@@ -73,7 +73,7 @@ body:
       label: Services and devices
       description: |
         What `tailscale service list` shows on the device you browse from, if your Tailscale has that command (1.102 or later).
-        For a device app: its tailnet name and what `curl -sI https://<device>.<tailnet>.ts.net/` prints from a tailnet machine.
+        For a device app: its tailnet name and what `curl -sS -o /dev/null -D - https://<device>.<tailnet>.ts.net/` prints from a tailnet machine.
       render: text
 
   - type: textarea

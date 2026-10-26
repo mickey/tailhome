@@ -27,7 +27,7 @@ tailhome is pre-1.0 with one maintainer, who runs it daily. Settings and default
 
 ## Why tailhome
 
-tailhome is a launcher, not a dashboard. It has no widgets, feeds or server stats; [Homepage](https://gethomepage.dev) and [Glance](https://github.com/glanceapp/glance) do those well, and tailhome can [feed them its app list](docs/customize.md#homepage-and-glance). You keep no separate app list: a Service published with `tailscale serve`, [DockTail or TSDProxy](docs/apps.md#publish-container-apps) appears on the next refresh. tailhome does not scan ports, read Docker labels or look behind a reverse proxy.
+tailhome is a launcher, not a dashboard. It has no widgets, feeds or server stats; [Homepage](https://gethomepage.dev) and [Glance](https://github.com/glanceapp/glance) do those well, and tailhome can [feed them its app list](docs/customize.md#homepage-and-glance). A Service published with `tailscale serve`, [DockTail or TSDProxy](docs/apps.md#publish-container-apps) appears on the next refresh. tailhome does not scan port ranges, read Docker labels or look behind reverse proxies.
 
 ## Which apps appear
 
@@ -103,8 +103,8 @@ See [all fields](docs/customize.md) and [`overrides.example.yaml`](overrides.exa
 > [!WARNING]
 > Anyone who can open tailhome sees every listed app and its status, on the page and both JSON endpoints, including apps their own access rules block. Restrict access to tailhome accordingly. Hiding an entry removes it from these lists; it does not change access to the app.
 
-- Every 5 minutes by default, tailhome sends `GET /` on port 443 to every device of the tailnet it may reach, other members' laptops and phones included, and checks each listed app. Requests name `tailhome` in their User-Agent. Set `TAILHOME_DEVICE_TAGS` to limit which devices it tries, or `TAILHOME_DEVICES=off`.
-- Browsers load icons from `cdn.jsdelivr.net`, and tailhome downloads the icon list from there daily. Set your own `icon` URLs to serve the icons elsewhere.
+- Every five minutes by default, tailhome sends `GET /` on port 443 to every device it may reach in your tailnet, other members' laptops and phones included, and checks each listed app. Requests name `tailhome` in their User-Agent. Set `TAILHOME_DEVICE_TAGS` to limit which devices it tries, or `TAILHOME_DEVICES=off`.
+- Browsers load icons from `cdn.jsdelivr.net`, which sees the icon names but not the page address; tailhome downloads the icon list from there daily. Set your own `icon` URLs to serve the icons elsewhere.
 - Like other Tailscale nodes, tailhome uploads diagnostic logs to Tailscale. Set `TS_NO_LOGS_NO_SUPPORT=true` to stop uploads.
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under [MIT](LICENSE).

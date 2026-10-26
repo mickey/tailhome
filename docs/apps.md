@@ -9,7 +9,7 @@ Which apps appear, what the page shows and how to publish container apps. [Back 
 | A [Tailscale Service](https://tailscale.com/docs/features/tailscale-services) | Any Service tailhome's node can reach. With an OAuth client, every Service in the tailnet. | `tailscale serve --service`, [DockTail and TSDProxy v3](#publish-container-apps) |
 | An app on its own tailnet device | A device in this tailnet that answers `https://<device>.<tailnet>.ts.net/` on port 443 with a valid certificate | `tailscale serve` on the device, [TSDProxy v2, tsbridge, ScaleTail](#publish-container-apps) |
 
-tailhome does not scan ports, read Docker labels or look behind reverse proxies. An app at `nas:8080`, under a sub-path or behind a shared proxy appears only once you publish it one of these two ways. A `url` override changes where a tile points; it cannot add an app.
+tailhome does not scan port ranges, read Docker labels or look behind reverse proxies. An app at `nas:8080`, under a sub-path or behind a shared proxy appears only once you publish it one of these two ways. A `url` override changes where a tile points; it cannot add an app.
 
 Your policy must let tailhome's node reach each app. Without credentials, the node uses your account's rules; with OAuth, grant access to `tag:tailhome` ([step 1](setup.md#set-up-oauth)).
 

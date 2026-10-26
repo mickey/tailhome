@@ -68,7 +68,7 @@ An optional OAuth client adds Service groups from tags and descriptions from the
 
    Copy the client ID and secret. Tailscale shows the secret only once.
 
-4. Save the credentials in `.env` next to `compose.yaml`, replacing both placeholders, then restart:
+4. Save the credentials in `.env` next to `compose.yaml`, then restart. If you copied `.env.example`, uncomment both lines:
 
    ```sh
    TAILHOME_CLIENT_ID='your-client-id'
