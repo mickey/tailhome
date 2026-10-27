@@ -13,7 +13,19 @@ tailhome does not scan port ranges, read Docker labels or look behind reverse pr
 
 Your policy must let tailhome's node reach each app. Without credentials, the node uses your account's rules; with OAuth, grant access to `tag:tailhome` ([step 1](setup.md#set-up-oauth)).
 
-Nothing published yet? Start with [Tailscale Services](https://tailscale.com/docs/features/tailscale-services).
+### App on another port
+
+An app at `nas:8080` appears once it is served at a tailnet name on port 443: the device's own name, or a Service's. With one app on a device, run this on the device, with the app's local port in place of `8080`:
+
+```sh
+tailscale serve --bg --https=443 8080
+```
+
+Tailscale serves the app at `https://<device>.<tailnet>.ts.net/` and keeps serving it after restarts; Docker or systemd must still keep the app running. The tile shows the device's name, title-cased; a `label` [override](customize.md) under that name renames it, and `icon` changes its icon.
+
+With several apps on one device, give each its own [Tailscale Service](https://tailscale.com/docs/features/tailscale-services): one tile per Service. Paths added with `--set-path` share one tile.
+
+HTTPS certificates put the name of each device and Service served over HTTPS in public [Certificate Transparency](https://tailscale.com/docs/how-to/set-up-https-certificates) logs.
 
 ### Services
 

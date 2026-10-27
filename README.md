@@ -34,7 +34,7 @@ tailhome is a launcher, not a dashboard. It has no widgets, feeds or server stat
 - A Tailscale Service tailhome can reach, or every Service with an OAuth client.
 - An app on its own tailnet device that answers HTTPS on port 443.
 
-An app at `nas:8080` appears once you publish it one of these two ways. See [discovery rules, certificates and publishing tools](docs/apps.md).
+An app at `nas:8080` appears once you [publish it with one command](docs/apps.md#app-on-another-port). See [discovery rules, certificates and publishing tools](docs/apps.md).
 
 ## Quick start
 

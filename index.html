@@ -132,7 +132,7 @@
       <h2>Open on another device</h2>
       <ol>
         <li>Install <a href="https://tailscale.com/download">Tailscale</a> and sign in to this tailnet.</li>
-        <li>Open this address:{{template "snippet" .Address}}</li>
+        <li>Open <code>http://{{.Title}}/</code>, with the trailing slash. If that name doesn't resolve, use the full address:{{template "snippet" .Address}}</li>
         <li>On a phone, add this page to the home screen to open it like an app.</li>
       </ol>
     </section>
@@ -203,12 +203,16 @@
 {{define "icon"}}<span class="icon">{{printf "%.1s" .Label}}{{with .Icon}}<img src="{{.}}" alt="" onload="this.classList.add('loaded')">{{end}}</span>{{end}}
 {{define "dot"}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}
 {{define "snippet"}}<button class="snippet" type="button" data-copy="{{.}}" title="Copy"><code>{{.}}</code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>{{end}}
-{{define "addapp"}}<h3>Docker container with <a href="https://github.com/marvinvr/docktail">DockTail</a></h3>
+{{define "addapp"}}<h3>One app on a device</h3>
+<p>Run this on the device, with the app's local port in place of <code>8080</code>:</p>
+{{template "snippet" "tailscale serve --bg --https=443 8080"}}
+<p>Tailscale serves the app at <code>https://&lt;device&gt;.&lt;tailnet&gt;.ts.net/</code> and keeps serving it after restarts; keep the app itself running. The tile shows the device's name, title-cased; a <code>label</code> override under that name renames it, and <code>icon</code> changes its icon.</p>
+<h3>Several apps on one device</h3>
+<p>Give each app a Tailscale Service. Define <code>svc:myapp</code> with endpoint <code>tcp:443</code> on the <a href="https://console.tailscale.com/admin/services">Services page</a>, then run this on a tagged device with Tailscale 1.86 or later:</p>
+{{template "snippet" "tailscale serve --service=svc:myapp --https=443 127.0.0.1:8080"}}
+<p>Approve the device on the Services page unless your policy approves it automatically. Repeat with a new name for each app.</p>
+<h3>Docker container with <a href="https://github.com/marvinvr/docktail">DockTail</a></h3>
 {{template "snippet" "labels:\n  - docktail.service.enable=true\n  - docktail.service.name=myapp\n  - docktail.service.port=8080"}}
 <p>With an OAuth client, DockTail also defines the Service. Without one, define it on the Services page first.</p>
-<h3>Any app with tailscale serve</h3>
-<p>Define <code>svc:myapp</code> with port <code>443</code> on the <a href="https://console.tailscale.com/admin/services">Services page</a>, then run this on a tagged machine:</p>
-{{template "snippet" "tailscale serve --service=svc:myapp --https=443 127.0.0.1:8080"}}
-<p>Then approve the machine on the Services page. The setting survives restarts; keep the app running with Docker or systemd.</p>
-<h3>App on its own tailnet device</h3>
-<p>If the app answers <code>https://&lt;device&gt;.&lt;tailnet&gt;.ts.net/</code> on port 443 with a valid Tailscale certificate (TSDProxy v2, tsbridge, ScaleTail, <code>tailscale serve</code> on the device) and tailhome's node may reach it, it appears here on the next refresh. Other ports and paths are not discovered.</p>{{end}}
+<h3>App already on its own device</h3>
+<p>Apps that already answer HTTPS on port 443 with a valid certificate, such as TSDProxy v2, tsbridge or ScaleTail apps, appear without any of this.</p>{{end}}
