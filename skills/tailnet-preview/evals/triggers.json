@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Can I see this on my phone? I'm working in ~/code/checkout on this laptop, and npm run dev is already serving the page at 127.0.0.1:3000. Both devices have Tailscale, but I haven't approved preview ports yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "Share the running worktree on this MacBook privately with my review laptop. Tailscale is the App Store version. I approve unused HTTPS ports 8443-8445 here; please leave the app on 443 alone.",
+    "should_trigger": true
+  },
+  {
+    "query": "The app runs on our authorized dev host studio-dev at localhost:5173. Use its existing approved pool from the agent launch environment and send me a private mobile review link. No public deployment.",
+    "should_trigger": true
+  },
+  {
+    "query": "Keep the short hero, editorial hero and product-demo worktrees available at the same time. Publish three private links in home as one Landing review set, with titles that tell the designer what changed.",
+    "should_trigger": true
+  },
+  {
+    "query": "I explicitly need seven checkout variants numbered 1 through 7, not a pair. Startup for seven isolated instances is authorized and 8443-8452 is approved on this machine. Keep every version available for review.",
+    "should_trigger": true
+  },
+  {
+    "query": "There's no tailhome installation here and I don't want one. Give our designer a verified private Tailscale URL for the app already running on 127.0.0.1:8080. I approve 8443-8445 on this machine.",
+    "should_trigger": true
+  },
+  {
+    "query": "Check checkout-a, the preview you published yesterday. The card loads but I think /checkout is serving the generic landing screen. Verify that exact HTTPS route and tell me whether its home listing is current.",
+    "should_trigger": true
+  },
+  {
+    "query": "List the previews recorded by this skill under my account on the app machine. Show the Checkout layout set separately so I can choose what to remove; don't stop anything yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "Remove checkout-a that you published on this machine, leaving checkout-b, the permanent 443 app and both dev processes running. A colleague may have edited one of checkout-a's Serve paths since yesterday.",
+    "should_trigger": true
+  },
+  {
+    "query": "We're done reviewing the exact set Checkout layout. Show a cleanup dry run, then remove its owned preview mappings on this machine. Leave Checkout layout mobile and the worktrees alone.",
+    "should_trigger": true
+  },
+  {
+    "query": "Our public payment provider must POST callbacks to localhost:3000/webhooks during testing. Use Tailscale Funnel to make that endpoint reachable without joining our tailnet; a private Serve link won't work.",
+    "should_trigger": false
+  },
+  {
+    "query": "Deploy the approved checkout branch to our production Vercel project and switch checkout.example.com to it. This replaces the customer-facing release, not a private worktree review.",
+    "should_trigger": false
+  },
+  {
+    "query": "The phone screenshot of localhost looks cramped. Update the React Preview component's responsive CSS and add Playwright coverage at 390px and 1280px. Do not publish or share a running app.",
+    "should_trigger": false
+  },
+  {
+    "query": "Tailpreview already owns the checkout preview and its Caddy lifecycle. Use Tailpreview's CLI to inspect its URL and shut it down after review; don't move it into direct Serve or add tailhome cards.",
+    "should_trigger": false
+  },
+  {
+    "query": "Our Portless app is already reachable privately. Diagnose its named localhost route using Portless's existing commands and keep Portless responsible for the listener and cleanup.",
+    "should_trigger": false
+  },
+  {
+    "query": "The studio-dev machine isn't on our tailnet yet. Install Tailscale, authenticate with a new auth key and enroll it before we discuss publishing any previews.",
+    "should_trigger": false
+  },
+  {
+    "query": "A teammate can't reach any of our private dev machines after yesterday's grants change. Audit the tailnet policy and propose the least-privilege access rule; don't create a new preview.",
+    "should_trigger": false
+  },
+  {
+    "query": "Set up tailhome from scratch on our server with OAuth, device filters and discovery ports. We already have preview URLs; this task is installing and configuring the launcher.",
+    "should_trigger": false
+  },
+  {
+    "query": "The home launcher has blank preview tiles after my CSS refactor. Fix the card grid rendering in the tailhome source and its UI tests; leave every published Serve mapping unchanged.",
+    "should_trigger": false
+  },
+  {
+    "query": "I have a manually managed private Serve service on 443, not one created by this skill. Review its reverse-proxy configuration and explain the 502 without adopting it, adding cards or changing its ownership.",
+    "should_trigger": false
+  }
+]

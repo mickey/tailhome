@@ -6,3 +6,4 @@
 .env
 .herdr-web-ui/
 .impeccable/
+__pycache__/
