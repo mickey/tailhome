@@ -71,6 +71,34 @@
   .manual code { display: block; word-break: break-all; }
   .manual span { color: var(--muted); }
   code { font: 13px ui-monospace, monospace; }
+  .meta button { min-height: 24px; }
+  .previews, .set { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; min-width: 0; }
+  .previews > *, .set > *, .preview { min-width: 0; }
+  .preview { align-items: flex-start; padding: 14px; }
+  .preview .text { display: flex; flex-direction: column; gap: 2px; }
+  .preview .label, .preview .desc { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .preview .desc { color: var(--muted); font-size: 13px; }
+  .preview .origin { margin-top: 6px; display: flex; align-items: center; gap: 6px; color: var(--muted); min-width: 0; }
+  .origin code { font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+  .ring { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--up); }
+  .ring.down { border-color: var(--down); }
+  .unverified { color: var(--fg); font-size: 12px; }
+  .set { grid-column: 1 / -1; margin-top: 8px; }
+  .set + .set { margin-top: 18px; }
+  .set-name { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; margin: 2px 0 -2px; font-size: 14px; font-weight: 600; }
+  .set-name .name { min-width: 0; overflow-wrap: anywhere; }
+  .set-name .count, .set-name .host { font-weight: 400; color: var(--muted); font-size: 13px; }
+  .set-name .count { white-space: nowrap; }
+  .set-name .host { overflow-wrap: anywhere; min-width: 0; }
+  .version { flex: none; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 16px; background: color-mix(in srgb, var(--up) 16%, var(--card)); border: 1px solid color-mix(in srgb, var(--up) 35%, var(--line)); }
+  .apps-start { margin-top: 36px; }
+  @media (max-width: 520px) {
+    main { padding: 24px 14px 72px; }
+    .previews, .set, .grid { grid-template-columns: minmax(0, 1fr); }
+    .meta button { min-height: 44px; }
+    header { align-items: center; gap: 8px; }
+    .meta { white-space: nowrap; }
+  }
   ::selection { background: color-mix(in srgb, var(--up) 28%, transparent); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
@@ -83,13 +111,27 @@
   </header>
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
   {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}
-  {{range .Groups}}
-  <h2>{{.Name}}</h2>
+  {{if .Previews}}
+  <section aria-labelledby="previews-title">
+    <h2 id="previews-title">Previews</h2>
+    <div class="previews">
+      {{range $i, $block := previewBlocks .Previews}}
+      {{if .Set}}<section class="set" aria-labelledby="set-{{$i}}">
+        <h3 class="set-name" id="set-{{$i}}"><span class="name">{{.Set}}</span><span class="count">· {{len .Entries}} {{if eq (len .Entries) 1}}version{{else}}versions{{end}}</span>{{if .ShowHost}}<span class="host">{{bareHost (index .Entries 0).Name}}</span>{{end}}</h3>
+        {{range .Entries}}{{template "preview" .}}{{end}}
+      </section>{{else}}{{range .Entries}}{{template "preview" .}}{{end}}{{end}}
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+  {{range $i, $group := .Groups}}
+  <h2{{if and (eq $i 0) $.Previews}} class="apps-start"{{end}}>{{if and $.Previews (eq .Name "Previews")}}Previews (apps){{else}}{{.Name}}{{end}}</h2>
   <div class="grid">
     {{range .Entries}}
     <a class="tile" href="{{link .URL}}" title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}</div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}</div>
+      {{if .Unverified}}<span class="unverified">HTTPS certificate could not be verified</span>{{end}}
       {{template "dot" .}}
     </a>
     {{end}}
@@ -107,9 +149,10 @@
     {{end}}
   </div>
   {{end}}
-  {{if and (not .Groups) (not .Other) (not .Error)}}
+  {{if and (not .Previews) (not .Groups) (not .Other) (not .Error)}}
   <section class="empty help">
-    <h2>No apps yet</h2>
+    <h2>No apps to show</h2>
+    {{if .PreviewEnabled}}<p>Previews are hidden when an HTTPS connection fails. Refresh to check again.</p>{{end}}
     <p>tailhome shows <a href="https://tailscale.com/docs/features/tailscale-services">Tailscale Services</a> and apps on their own tailnet devices.</p>
     {{template "addapp"}}
     {{if .Local}}
@@ -200,19 +243,37 @@
 </script>
 </body>
 </html>
-{{define "icon"}}<span class="icon">{{printf "%.1s" .Label}}{{with .Icon}}<img src="{{.}}" alt="" onload="this.classList.add('loaded')">{{end}}</span>{{end}}
-{{define "dot"}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}
+{{define "icon"}}<span class="icon" aria-hidden="true">{{printf "%.1s" .Label}}{{with .Icon}}<img src="{{.}}" alt="" onload="this.classList.add('loaded')">{{end}}</span>{{end}}
+{{define "dot"}}{{if eq .Check "tls"}}{{template "ring" .}}{{else}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}{{end}}
+{{define "ring"}}{{$s := "HTTPS connection succeeded at last refresh; pages and app health not checked"}}{{if eq .Status "down"}}{{$s = "HTTPS connection failed at last refresh; pages and app health not checked"}}{{end}}<span class="ring {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}"></span>{{end}}
+{{define "preview" -}}
+<a class="tile preview" href="{{link .URL}}" aria-label="{{previewName .}}" aria-describedby="preview-desc-{{.Name}} preview-origin-{{.Name}}{{if .Unverified}} preview-trust-{{.Name}}{{end}}">
+  {{if .Version}}<span class="version" aria-hidden="true">{{.Version}}</span>{{else}}{{template "icon" .}}{{end}}
+  <div class="text">
+    <div class="label">{{.Label}}</div>
+    <div class="desc" id="preview-desc-{{.Name}}">{{if .Description}}{{.Description}}{{else}}No description provided{{end}}</div>
+    <div class="origin" id="preview-origin-{{.Name}}">{{template "ring" .}}<code>{{.Name}}</code></div>
+    {{if .Unverified}}<span class="unverified" id="preview-trust-{{.Name}}">HTTPS certificate could not be verified</span>{{end}}
+  </div>
+</a>
+{{end}}
 {{define "snippet"}}<button class="snippet" type="button" data-copy="{{.}}" title="Copy"><code>{{.}}</code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>{{end}}
 {{define "addapp"}}<h3>One app on a device</h3>
 <p>Run this on the device, with the app's local port in place of <code>8080</code>:</p>
 {{template "snippet" "tailscale serve --bg --https=443 8080"}}
-<p>Tailscale serves the app at <code>https://&lt;device&gt;.&lt;tailnet&gt;.ts.net/</code> and keeps serving it after restarts; keep the app itself running. The tile shows the device's name, title-cased; a <code>label</code> override under that name renames it, and <code>icon</code> changes its icon.</p>
+<p>Tailscale serves the app at <code>https://&lt;device&gt;.&lt;tailnet&gt;.ts.net/</code>. The background Serve mapping survives restarts; keep this computer connected and the app itself running. The tile shows the device's name, title-cased; a <code>label</code> override under that name renames it, and <code>icon</code> changes its icon.</p>
 <h3>Several apps on one device</h3>
 <p>Give each app a Tailscale Service. Define <code>svc:myapp</code> with endpoint <code>tcp:443</code> on the <a href="https://console.tailscale.com/admin/services">Services page</a>, then run this on a tagged device with Tailscale 1.86 or later:</p>
 {{template "snippet" "tailscale serve --service=svc:myapp --https=443 127.0.0.1:8080"}}
 <p>Approve the device on the Services page unless your policy approves it automatically. Repeat with a new name for each app.</p>
+<p>For Docker apps, DockTail or TSDProxy can <a href="https://github.com/mickey/tailhome/blob/main/docs/apps.md#publish-container-apps">publish each container separately</a>. Development-preview ports are not needed for this.</p>
 <h3>Docker container with <a href="https://github.com/marvinvr/docktail">DockTail</a></h3>
 {{template "snippet" "labels:\n  - docktail.service.enable=true\n  - docktail.service.name=myapp\n  - docktail.service.port=8080"}}
 <p>With an OAuth client, DockTail also defines the Service. Without one, define it on the Services page first.</p>
 <h3>App already on its own device</h3>
-<p>Apps that already answer HTTPS on port 443 with a valid certificate, such as TSDProxy v2, tsbridge or ScaleTail apps, appear without any of this.</p>{{end}}
+<p>Apps that already answer HTTPS on port 443 with a valid certificate, such as TSDProxy v2, tsbridge or ScaleTail apps, appear without any of this.</p>
+<h3>Optional: development previews</h3>
+<p>Building an app with a coding agent? The <a href="https://github.com/mickey/tailhome/tree/main/skills/tailnet-preview">tailnet-preview skill</a> can publish temporary development links from the machine hosting your app, including your laptop. Skip this for permanent NAS and container apps.</p>
+<p>The publishing machine's owner must approve its Serve ports; your tailnet administrator controls who can connect. With no approved pool, the agent asks once proposing 8443-8452 and waits for approval. To list extra ports, this tailhome's operator configures <code>TAILHOME_PREVIEW_PORTS</code> separately.</p>
+<p>Everyone who can open this tailhome sees all listed preview titles, descriptions, addresses and status, even if their app access is blocked. Use metadata this whole audience may read. Hiding a preview does not revoke access.</p>
+<p>Unreachable previews are hidden. Rings check HTTPS connectivity, not pages or app health. A permanent app appearing here can be kept under Apps with a <a href="https://github.com/mickey/tailhome/blob/main/docs/troubleshooting.md#a-permanent-device-app-moved-into-previews"><code>temporary: false</code> override</a>.</p>{{end}}

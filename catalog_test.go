@@ -20,6 +20,12 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
+func get(h http.Handler, target string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+	return rec
+}
+
 type fakeLister struct {
 	services []tsapi.Service
 	err      error
@@ -115,6 +121,9 @@ func newCatalog(lister ServiceLister, n *fakeNet, overrides string) *Catalog {
 // index flattens a View to name → entry, and name → section ("Other" or group).
 func index(v View) (map[string]Entry, map[string]string) {
 	entries, sections := map[string]Entry{}, map[string]string{}
+	for _, e := range v.Previews {
+		entries[e.Name], sections[e.Name] = e, "Previews"
+	}
 	for _, g := range v.Groups {
 		for _, e := range g.Entries {
 			entries[e.Name], sections[e.Name] = e, g.Name
@@ -305,23 +314,18 @@ db:
 	c := newCatalog(lister, &fakeNet{}, path)
 	h := NewHandler(c, "start")
 
-	get := func(target string) *httptest.ResponseRecorder {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
-		return rec
-	}
-	if body := get("/api/services.json").Body.String(); !strings.Contains(body, `"groups":[]`) || !strings.Contains(body, `"other":[]`) {
+	if body := get(h, "/api/services.json").Body.String(); !strings.Contains(body, `"groups":[]`) || !strings.Contains(body, `"other":[]`) {
 		t.Errorf("JSON before first refresh: %s", body)
 	}
-	if body := strings.TrimSpace(get("/api/list.json").Body.String()); body != "[]" {
+	if body := strings.TrimSpace(get(h, "/api/list.json").Body.String()); body != "[]" {
 		t.Errorf("list before first refresh: %s", body)
 	}
 	c.Refresh(t.Context())
-	if body := get("/api/services.json").Body.String(); !strings.Contains(body, `"name":"bare"`) || strings.Contains(body, `"ports":null`) {
+	if body := get(h, "/api/services.json").Body.String(); !strings.Contains(body, `"name":"bare"`) || strings.Contains(body, `"ports":null`) {
 		t.Errorf("JSON ports: %s", body)
 	}
 	var list []Entry
-	if err := json.Unmarshal(get("/api/list.json").Body.Bytes(), &list); err != nil {
+	if err := json.Unmarshal(get(h, "/api/list.json").Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
 	var names []string
@@ -332,7 +336,7 @@ db:
 	if got := strings.Join(names, ","); got != "evil,nas,bare,db" {
 		t.Errorf("list order: %s", got)
 	}
-	rec := get("/")
+	rec := get(h, "/")
 	body := rec.Body.String()
 	if rec.Code != 200 || !strings.Contains(body, "<h1>start</h1>") || !strings.Contains(body, "Evil") {
 		t.Fatalf("page: %d %s", rec.Code, body)
@@ -355,8 +359,7 @@ db:
 func TestPageHeaders(t *testing.T) {
 	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
 	for _, target := range []string{"/", "/api/list.json", "/go/nope"} { // pages, JSON and errors alike
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+		rec := get(h, target)
 		if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
 			t.Errorf("%s: Referrer-Policy %q, want same-origin", target, got)
 		}
@@ -369,16 +372,11 @@ func TestPageHeaders(t *testing.T) {
 // Phones only offer the page as an app when the manifest and its icons load.
 func TestManifestIcons(t *testing.T) {
 	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
-	get := func(target string) *httptest.ResponseRecorder {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
-		return rec
-	}
 	var m struct {
 		Name  string
 		Icons []struct{ Src string }
 	}
-	rec := get("/manifest.webmanifest")
+	rec := get(h, "/manifest.webmanifest")
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +388,7 @@ func TestManifestIcons(t *testing.T) {
 		srcs = append(srcs, i.Src)
 	}
 	for _, src := range srcs {
-		if rec := get(src); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
+		if rec := get(h, src); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 			t.Errorf("%s: %d %s", src, rec.Code, rec.Header().Get("Content-Type"))
 		}
 	}
@@ -400,8 +398,7 @@ func TestManifestIcons(t *testing.T) {
 // node name and tailnet; a wrong one would send other devices nowhere.
 func TestOtherDeviceAddress(t *testing.T) {
 	c := newCatalog(&fakeLister{}, &fakeNet{}, "")
-	rec := httptest.NewRecorder()
-	NewHandler(c, "home-1").ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	rec := get(NewHandler(c, "home-1"), "/")
 	if !strings.Contains(rec.Body.String(), `data-copy="https://home-1.ts.test/"`) {
 		t.Error("page does not offer its own address for other devices")
 	}
@@ -410,9 +407,7 @@ func TestOtherDeviceAddress(t *testing.T) {
 func TestEmptyPageGuidance(t *testing.T) {
 	render := func(c *Catalog) string {
 		c.Refresh(t.Context())
-		rec := httptest.NewRecorder()
-		NewHandler(c, "home").ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
-		return rec.Body.String()
+		return get(NewHandler(c, "home"), "/").Body.String()
 	}
 	const policyHint = "your policy lets this node reach your Services"
 
@@ -421,21 +416,21 @@ func TestEmptyPageGuidance(t *testing.T) {
 	notices := []Notice{{Text: "expires <soon>", LinkText: "Open the Machines page", URL: "https://console.tailscale.com/admin/machines"}}
 	local.Notices = func(context.Context) []Notice { return notices }
 	body := render(local)
-	if !strings.Contains(body, "No apps yet") || !strings.Contains(body, policyHint) {
+	if !strings.Contains(body, "No apps to show") || !strings.Contains(body, policyHint) {
 		t.Errorf("local empty page lacks its guidance: %s", body)
 	}
 	if !strings.Contains(body, "expires &lt;soon&gt;") || !strings.Contains(body, `<a href="https://console.tailscale.com/admin/machines">Open the Machines page</a>`) {
 		t.Errorf("notice not rendered escaped with its link: %s", body)
 	}
 
-	if body := render(newCatalog(&fakeLister{}, &fakeNet{}, "")); !strings.Contains(body, "No apps yet") || strings.Contains(body, policyHint) {
+	if body := render(newCatalog(&fakeLister{}, &fakeNet{}, "")); !strings.Contains(body, "No apps to show") || strings.Contains(body, policyHint) {
 		t.Errorf("OAuth empty page: want guidance without the local-mode hints: %s", body)
 	}
-	if body := render(newCatalog(&fakeLister{err: errors.New("api down")}, &fakeNet{}, "")); strings.Contains(body, "No apps yet") {
+	if body := render(newCatalog(&fakeLister{err: errors.New("api down")}, &fakeNet{}, "")); strings.Contains(body, "No apps to show") {
 		t.Error("empty-state guidance shown over a refresh error")
 	}
 	listed := &fakeLister{services: []tsapi.Service{{Name: "svc:db", Ports: []string{"tcp:5432"}}}}
-	if body := render(newCatalog(listed, &fakeNet{}, "")); strings.Contains(body, "No apps yet") {
+	if body := render(newCatalog(listed, &fakeNet{}, "")); strings.Contains(body, "No apps to show") {
 		t.Error("empty-state guidance shown with Services listed")
 	}
 }
@@ -517,8 +512,8 @@ func TestManualRefreshThrottledDuringOutage(t *testing.T) {
 	lister := &fakeLister{err: errors.New("api down")}
 	c := newCatalog(lister, &fakeNet{}, "")
 
-	c.RefreshIfOlder(t.Context(), time.Minute)
-	c.RefreshIfOlder(t.Context(), time.Minute)
+	c.RefreshManualIfOlder(t.Context(), time.Minute)
+	c.RefreshManualIfOlder(t.Context(), time.Minute)
 
 	if lister.calls != 1 {
 		t.Fatalf("API called %d times, want 1", lister.calls)
@@ -761,11 +756,49 @@ evil:
 		"/go/db":        "",                               // not a tile: nothing to open
 		"/go/evil":      "",                               // never redirect where a tile wouldn't link
 	} {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))
+		rec := get(h, target)
 		got := rec.Header().Get("Location")
 		if want == "" && rec.Code != http.StatusNotFound || want != "" && (rec.Code != http.StatusFound || got != want) {
 			t.Errorf("%s: %d %q, want %q", target, rec.Code, got, want)
 		}
+	}
+}
+
+func TestPreviewOrderingAndFlatView(t *testing.T) {
+	entries := []Entry{
+		{Name: "z:8443", Host: "z.ts.test", Set: "Landing", Version: "A", Label: "First", nodeID: "z"},
+		{Name: "a:8444", Host: "a.ts.test", Set: "Landing", Version: "", Label: "No badge", nodeID: "a"},
+		{Name: "a:8443", Host: "a.ts.test", Set: "Landing", Version: "B", Label: "B", nodeID: "a"},
+		{Name: "a:8445", Host: "a.ts.test", Set: "Landing", Version: "A", Label: "A later", nodeID: "a", order: 5},
+		{Name: "a:8446", Host: "a.ts.test", Set: "Landing", Version: "A", Label: "A first", nodeID: "a", order: 1},
+		{Name: "single-z", Label: "Z", order: -1},
+		{Name: "single-a", Label: "A"},
+		{Name: "single-b", Label: "A"},
+		{Name: "other-set", Host: "z.ts.test", Set: "Another", Version: "Z"},
+	}
+	sortPreviews(entries)
+	want := []string{"single-z", "single-a", "single-b", "other-set", "a:8446", "a:8445", "a:8443", "a:8444", "z:8443"}
+	for i, e := range entries {
+		if e.Name != want[i] {
+			t.Fatalf("entry %d=%s, want %s", i, e.Name, want[i])
+		}
+	}
+	v := View{Previews: entries, Groups: []Group{{Name: "Apps", Entries: []Entry{{Name: "app"}}}}, Other: []Entry{{Name: "app"}, {Name: "ssh"}}}
+	all := v.all()
+	if len(all) != len(want)+2 || all[len(want)].Name != "app" || all[len(want)+1].Name != "ssh" {
+		t.Fatalf("flat page order: %+v", all)
+	}
+}
+
+func TestTemporaryOverrideRejectsServices(t *testing.T) {
+	for _, value := range []string{"true", "false"} {
+		t.Run(value, func(t *testing.T) {
+			n := &fakeNet{}
+			c := newCatalog(&fakeLister{services: []tsapi.Service{{Name: "svc:app", Ports: []string{"tcp:443"}}}}, n, writeOverrides(t, "app: {temporary: "+value+"}\n"))
+			c.Refresh(t.Context())
+			if !strings.Contains(c.View().Error, "temporary applies only to device endpoints") || n.dials.Load() != 0 {
+				t.Fatalf("Service temporary accepted: %+v", c.View())
+			}
+		})
 	}
 }

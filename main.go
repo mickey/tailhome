@@ -80,7 +80,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	previewPorts, err := parsePreviewPorts(os.Getenv("TAILHOME_PREVIEW_PORTS"))
+	if err != nil {
+		return err
+	}
 	log.Printf("tailhome %s", version)
+	if devicesOn == "off" && len(previewPorts) != 0 {
+		log.Printf("TAILHOME_PREVIEW_PORTS is ignored while TAILHOME_DEVICES=off")
+	}
 
 	dir, err := stateDir()
 	if err != nil {
@@ -196,6 +203,7 @@ func run() error {
 		Icons:           icons,
 		DeviceTags:      deviceTags,
 		InsecureTLSTags: insecureTLSTags,
+		PreviewPorts:    previewPorts,
 		DeviceProber:    &DeviceProber{dial: srv.Dial},
 	}
 	if devicesOn == "on" {

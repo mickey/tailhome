@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -110,6 +111,10 @@ func serveDeviceTLS(t *testing.T, cert tls.Certificate, handler http.Handler) st
 func (ca *deviceCA) serve(t *testing.T, name string, status int) string {
 	t.Helper()
 	return serveDeviceTLS(t, ca.leaf(t, name, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == cardPath {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if r.Method != http.MethodGet || r.URL.Path != "/" || r.Host != name || r.TLS.ServerName != name {
 			t.Errorf("got %s %s%s SNI %s, want GET %s/", r.Method, r.Host, r.URL.Path, r.TLS.ServerName, name)
 		}
@@ -119,6 +124,13 @@ func (ca *deviceCA) serve(t *testing.T, name string, status int) string {
 		w.Header().Set("Location", "https://"+name+"/elsewhere")
 		w.WriteHeader(status)
 	}))
+}
+
+// probe exercises the root-health contract without fetching a card.
+func (p *DeviceProber) probe(ctx context.Context, d Device, insecure bool) (bool, Status, string, bool) {
+	check := deviceCheck{Device: d, port: 443, insecure: insecure, state: &endpointState{tlsUp: true}}
+	p.check(ctx, &check, false)
+	return check.answered, check.status, check.reason, check.unverified
 }
 
 func TestDeviceProberTLS(t *testing.T) {
@@ -264,9 +276,13 @@ func deviceEntry(t *testing.T, c *Catalog, name string) Entry {
 func captureLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
-	old := log.Writer()
+	old, flags := log.Writer(), log.Flags()
 	log.SetOutput(&logs)
-	t.Cleanup(func() { log.SetOutput(old) })
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(old)
+		log.SetFlags(flags)
+	})
 	return &logs
 }
 
@@ -383,7 +399,7 @@ func TestCatalogDeviceIdentityAndPolicy(t *testing.T) {
 				if e := deviceEntry(t, c, "app"); e.Status != StatusUp {
 					t.Fatalf("IP update not used: %+v", e)
 				}
-				if c.admitted[d.ID].IP != l.devices[0].IP {
+				if c.admitted[endpointID{d.ID, 443}].IP != l.devices[0].IP {
 					t.Fatal("recorded IP not refreshed")
 				}
 			} else if len(c.admitted) != 0 {
@@ -413,15 +429,20 @@ func TestCatalogDeviceInsecurePolicyAndTeachingLog(t *testing.T) {
 			if strings.Count(logs.String(), "nas answers HTTPS") != 1 {
 				t.Fatalf("teaching log not once: %s", logs.String())
 			}
-			if !tagged {
-				if !strings.Contains(logs.String(), "tag it and add the tag") {
-					t.Fatalf("missing tag advice: %s", logs.String())
-				}
+			advice := "tag it and add the tag"
+			if tagged {
+				advice = "add one of its tags"
+			}
+			if !strings.Contains(logs.String(), advice) {
+				t.Fatalf("missing tag advice: %s", logs.String())
 			}
 			l.devices[0].Tags = append(l.devices[0].Tags, "tag:nas")
 			c.Refresh(t.Context())
-			if e := deviceEntry(t, c, "nas"); e.Description != "Unverified HTTPS" || e.Status != StatusUp {
+			if e := deviceEntry(t, c, "nas"); !e.Unverified || e.Description != "" || e.Status != StatusUp {
 				t.Fatalf("exception: %+v", e)
+			}
+			if strings.Contains(logs.String(), "nas card request:") {
+				t.Fatalf("TLS policy produced a card diagnostic: %s", logs.String())
 			}
 			l.devices[0].Tags = nil
 			c.Refresh(t.Context())
@@ -450,11 +471,11 @@ func TestCatalogDeviceInsecureDescriptionTracksCertificate(t *testing.T) {
 		n.addrs["100.64.0.1:443"] = step.addr
 		before := n.dials.Load()
 		c.Refresh(t.Context())
-		if e := deviceEntry(t, c, "app"); e.Description != step.description || e.Status != StatusUp {
+		if e := deviceEntry(t, c, "app"); e.Unverified != (step.description != "") || e.Description != "" || e.Status != StatusUp {
 			t.Fatalf("certificate description: %+v, want %q", e, step.description)
 		}
-		if n.dials.Load() != before+1 {
-			t.Fatalf("probe used %d dials, want 1", n.dials.Load()-before)
+		if got := n.dials.Load() - before; got != 1 {
+			t.Fatalf("probe used %d dials, want one shared connection", got)
 		}
 	}
 	c.OverridesPath = writeOverrides(t, "app: {description: Private app}\n")
@@ -510,18 +531,25 @@ func TestCatalogDeviceListingFailureIsolation(t *testing.T) {
 	n.addrs["web.ts.test:80"] = serveHTTP(t, 200)
 	n.addrs["100.64.0.1:443"] = ca.serve(t, d.DNSName, 200)
 	c.Refresh(t.Context())
+	updated := c.View().Updated
 	l.err = errors.New("netmap unavailable")
 	l.devices = nil
 	delete(n.addrs, "100.64.0.1:443")
 	c.Refresh(t.Context())
 	c.Refresh(t.Context())
-	if e := deviceEntry(t, c, "app"); e.Status != StatusDown {
-		t.Fatalf("recorded device not probed: %+v", e)
+	if e := deviceEntry(t, c, "app"); e.Status != StatusUp {
+		t.Fatalf("failed listing changed snapshot: %+v", e)
 	}
-	if e := deviceEntry(t, c, "web"); e.Status != StatusUp || c.View().Error != "" {
-		t.Fatalf("Service failure isolation: %+v, %s", e, c.View().Error)
+	if e := deviceEntry(t, c, "web"); e.Status != StatusUp || c.View().Error == "" || !c.View().Updated.Equal(updated) {
+		t.Fatalf("failed listing did not preserve snapshot and error: %+v, %s", e, c.View().Error)
 	}
-	if len(c.admitted) != 1 || strings.Count(logs.String(), "devices: listing failed:") != 1 {
+	listingTransitions := 0
+	for line := range strings.SplitSeq(logs.String(), "\n") {
+		if strings.HasPrefix(line, "devices: listing failed:") {
+			listingTransitions++
+		}
+	}
+	if len(c.admitted) != 1 || listingTransitions != 1 {
 		t.Fatalf("listing failure state: %s", logs.String())
 	}
 	c.OverridesPath = writeOverrides(t, "app: {hidden: true}\n")
@@ -533,6 +561,33 @@ func TestCatalogDeviceListingFailureIsolation(t *testing.T) {
 	c.Refresh(t.Context())
 	if len(c.admitted) != 0 || strings.Count(logs.String(), "devices: listing works again") != 1 {
 		t.Fatalf("recovery: %s", logs.String())
+	}
+}
+
+func TestListingFailureOnlyProbesAdmittedEndpoints(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, l, n, ca := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	serveCard(t, n, ca, d, 443, "", 404, 200)
+	c.Refresh(t.Context())
+	if len(c.admitted) != 1 {
+		t.Fatalf("initial admissions: %v", c.admitted)
+	}
+	// A newly reachable sibling must wait for a successful device listing.
+	srv := serveCard(t, n, ca, d, 8443, `{"title":"New preview"}`, 200, 0)
+	before := n.dials.Load()
+	l.err = errors.New("netmap unavailable")
+	c.Refresh(t.Context())
+	if got := n.dials.Load() - before; got != 1 {
+		t.Fatalf("outage used %d dials, want only the admitted endpoint", got)
+	}
+	if cards, _ := srv.counts(); cards != 0 || len(c.admitted) != 1 {
+		t.Fatalf("outage probed or admitted sibling: cards=%d admissions=%v", cards, c.admitted)
+	}
+	l.err = nil
+	c.Refresh(t.Context())
+	if len(c.admitted) != 2 || len(c.View().Previews) != 1 {
+		t.Fatalf("recovery did not admit sibling: %+v", c.View())
 	}
 }
 
@@ -620,9 +675,9 @@ func TestCatalogDeviceCandidateBudgetStartsAfterAdmitted(t *testing.T) {
 	}
 	candidate := catalogDevice("new", "new", "100.64.0.100")
 	c, _, n, ca := deviceCatalog(t, append(devices, candidate)...)
-	c.admitted = map[tailcfg.StableNodeID]Device{}
+	c.admitted = map[endpointID]Device{}
 	for _, d := range devices {
-		c.admitted[d.ID] = d
+		c.admitted[endpointID{d.ID, 443}] = d
 	}
 	c.scanBudget = 300 * time.Millisecond
 	c.DeviceProber.timeout = time.Second
@@ -637,5 +692,412 @@ func TestCatalogDeviceCandidateBudgetStartsAfterAdmitted(t *testing.T) {
 	c.Refresh(t.Context())
 	if e := deviceEntry(t, c, "new"); e.Status != StatusUp || len(c.admitted) != 17 {
 		t.Fatalf("admitted checks consumed candidate budget: %+v", e)
+	}
+}
+
+// cardServer counts card and root requests; a zero root code rejects root checks.
+type cardServer struct {
+	t            *testing.T
+	mu           sync.Mutex
+	body         string
+	code, root   int
+	cards, roots int
+}
+
+func (s *cardServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r.URL.Path != cardPath {
+		s.roots++
+		if s.root == 0 {
+			s.t.Errorf("unexpected root request on %s", r.Host)
+		}
+		w.WriteHeader(cmp.Or(s.root, 500))
+		return
+	}
+	s.cards++
+	w.WriteHeader(s.code)
+	fmt.Fprint(w, s.body)
+}
+
+func (s *cardServer) set(body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.body = body
+}
+
+func (s *cardServer) counts() (cards, roots int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cards, s.roots
+}
+
+func serveCard(t *testing.T, n *fakeNet, ca *deviceCA, d Device, port uint16, body string, code, root int) *cardServer {
+	t.Helper()
+	s := &cardServer{t: t, body: body, code: code, root: root}
+	n.addrs[netip.AddrPortFrom(d.IP, port).String()] = serveDeviceTLS(t, ca.leaf(t, d.DNSName, false), s)
+	return s
+}
+
+func TestPreviewProbeLifecycle(t *testing.T) {
+	for _, port := range []uint16{443, 8443} {
+		t.Run(fmt.Sprint(port), func(t *testing.T) {
+			logs := captureLogs(t)
+			d := catalogDevice("node", "devbox", "100.64.0.1")
+			c, l, n, ca := deviceCatalog(t, d)
+			if port != 443 {
+				c.PreviewPorts = []uint16{port}
+			}
+			srv := serveCard(t, n, ca, d, port, `{"title":"A title","description":"A description","icon":"shopify","preview":true,"set":"Landing","version":"A"}`, 200, 502)
+			c.Refresh(t.Context())
+			name := endpointName("devbox", port)
+			check := func(wantCards int) {
+				t.Helper()
+				e := deviceEntry(t, c, name)
+				if !e.Temporary || e.Check != "tls" || e.Status != StatusUp || e.Label != "A title" || e.Set != "Landing" || e.Version != "A" {
+					t.Fatalf("preview: %+v", e)
+				}
+				cards, roots := srv.counts()
+				if cards != wantCards || roots != 0 {
+					t.Fatalf("requests cards=%d roots=%d, want %d/0", cards, roots, wantCards)
+				}
+			}
+			check(1)
+			c.Refresh(t.Context())
+			check(1)
+			c.RefreshManualIfOlder(t.Context(), 0)
+			check(2)
+			// A skipped refresh does not fetch or publish.
+			updated := c.View().Updated
+			c.RefreshManualIfOlder(t.Context(), time.Hour)
+			check(2)
+			if !c.View().Updated.Equal(updated) {
+				t.Fatal("skipped refresh published")
+			}
+			l.devices[0].Online = false
+			c.Refresh(t.Context())
+			if len(c.View().Previews) != 0 || len(c.admitted) != 1 {
+				t.Fatalf("down preview: %+v", c.View())
+			}
+			l.devices[0].Online = true
+			c.Refresh(t.Context())
+			check(3)
+			if strings.Contains(logs.String(), "devbox listed") || strings.Contains(logs.String(), name+" is down") || strings.Contains(logs.String(), "listing 1 apps") {
+				t.Fatalf("preview lifecycle noise: %s", logs.String())
+			}
+			// A valid empty replacement clears metadata and preview classification
+			// on 443, but cannot cancel the configured extra-port policy.
+			srv.set(`{}`)
+			c.RefreshManualIfOlder(t.Context(), 0)
+			e := deviceEntry(t, c, name)
+			if port == 443 {
+				if e.Temporary || e.Check != "http" || e.Status != StatusDown {
+					t.Fatalf("permanent root semantics: %+v", e)
+				}
+			} else if !e.Temporary || e.Label != "Devbox :8443" || e.Set != "" || e.Version != "" {
+				t.Fatalf("pool fallback: %+v", e)
+			}
+		})
+	}
+}
+
+func TestPreviewEndpointEligibilityAndOverrides(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	c.Services = &fakeLister{services: []tsapi.Service{{Name: "svc:devbox", Ports: []string{"tcp:80"}}}}
+	n.addrs["devbox.ts.test:80"] = serveHTTP(t, 200)
+	serveCard(t, n, ca, d, 8443, `{"title":"Card","description":"Card description","icon":"card-icon","preview":true,"set":"Set","version":"B"}`, 200, 0)
+	c.OverridesPath = writeOverrides(t, "devbox: {label: Parent, description: Parent, icon: parent, group: Parent, order: 9}\n'devbox:8443': {label: Operator, description: Operator description, icon: operator, group: Work, order: -1, temporary: false, url: 'https://link.example/'}\n")
+	c.Refresh(t.Context())
+	e := deviceEntry(t, c, "devbox:8443")
+	if e.Temporary || e.Check != "tls" || e.Label != "Operator" || e.Description != "Operator description" || e.Icon != iconURL("operator") || e.Group != "Work" || e.order != -1 || e.URL != "https://link.example/" || e.Set != "" || e.Version != "" {
+		t.Fatalf("endpoint precedence: %+v", e)
+	}
+	if len(c.admitted) != 1 || deviceEntry(t, c, "devbox").Source != "service" {
+		t.Fatal("Service collision suppressed extra port")
+	}
+	c.OverridesPath = writeOverrides(t, "devbox: {hidden: true}\n'devbox:8443': {hidden: false}\n")
+	c.Refresh(t.Context())
+	if len(c.admitted) != 1 || len(c.View().Previews) != 1 {
+		t.Fatal("hidden Service suppressed extra-port device preview")
+	}
+	c.Services = &fakeLister{}
+	c.Refresh(t.Context())
+	if len(c.admitted) != 0 {
+		t.Fatal("endpoint undid device parent hidden")
+	}
+}
+
+func TestPreviewCardFetchFailures(t *testing.T) {
+	for _, occasion := range []string{"manual", "return"} {
+		for _, result := range []string{"absent", "invalid", "status", "transport", "body"} {
+			t.Run(occasion+"/"+result, func(t *testing.T) {
+				logs := captureLogs(t)
+				d := catalogDevice("node", "devbox", "100.64.0.1")
+				c, l, n, ca := deviceCatalog(t, d)
+				var mu sync.Mutex
+				calls := 0
+				response := "valid"
+				n.addrs["100.64.0.1:443"] = serveDeviceTLS(t, ca.leaf(t, d.DNSName, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					mu.Lock()
+					defer mu.Unlock()
+					if r.URL.Path != cardPath {
+						w.WriteHeader(200)
+						return
+					}
+					calls++
+					switch response {
+					case "valid":
+						fmt.Fprint(w, `{"title":"Old","preview":true}`)
+					case "absent":
+						w.WriteHeader(404)
+					case "invalid":
+						fmt.Fprint(w, `{"preview":null}`)
+					case "status":
+						w.Header().Set("Location", "/")
+						w.WriteHeader(302)
+					case "transport":
+						conn, _, _ := w.(http.Hijacker).Hijack()
+						conn.Close()
+					case "body":
+						w.Header().Set("Content-Length", "100")
+						fmt.Fprint(w, `{"title":`)
+						w.(http.Flusher).Flush()
+						<-r.Context().Done()
+					}
+				}))
+				c.Refresh(t.Context())
+				if occasion == "return" {
+					l.devices[0].Online = false
+					c.Refresh(t.Context())
+					l.devices[0].Online = true
+				}
+				mu.Lock()
+				response = result
+				mu.Unlock()
+				if result == "body" {
+					c.DeviceProber.timeout = 250 * time.Millisecond
+				}
+				c.RefreshManualIfOlder(t.Context(), 0)
+				if result == "status" && !strings.Contains(logs.String(), "device devbox card request: HTTP 302") {
+					t.Fatalf("HTTP diagnostic missing status: %s", logs.String())
+				}
+				if (result == "transport" || result == "body") && !strings.Contains(logs.String(), "device devbox card request: HTTPS request failed") {
+					t.Fatalf("transport diagnostic unclear: %s", logs.String())
+				}
+				e := deviceEntry(t, c, "devbox")
+				keepPreview := result == "status" || result == "transport" || result == "body"
+				wantTitle := "Devbox"
+				if keepPreview && occasion == "manual" {
+					wantTitle = "Old"
+				}
+				if e.Temporary != keepPreview || e.Label != wantTitle {
+					t.Fatalf("result: %+v", e)
+				}
+				if keepPreview && (e.Check != "tls" || e.Status != StatusUp) {
+					t.Fatalf("preview health changed after failed card request: %+v", e)
+				}
+				c.Refresh(t.Context())
+				mu.Lock()
+				defer mu.Unlock()
+				if calls != 2 {
+					t.Fatalf("card retried on unchanged periodic check: %d", calls)
+				}
+			})
+		}
+	}
+}
+
+func TestPreviewUnverifiedCardIsNotImported(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	d.Tags = []string{"tag:dev"}
+	c, _, n, _ := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	c.InsecureTLSTags = []string{"tag:dev"}
+	other := newDeviceCA(t)
+	srv := serveCard(t, n, other, d, 8443, `{"title":"Untrusted title","preview":true}`, 200, 0)
+	c.Refresh(t.Context())
+	e := deviceEntry(t, c, "devbox:8443")
+	requests, _ := srv.counts()
+	if !e.Unverified || !e.Temporary || e.Label != "Devbox :8443" || requests != 0 {
+		t.Fatalf("unverified metadata: %+v, requests=%d", e, requests)
+	}
+}
+
+func TestCardless443RetainsRootHealth(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	srv := serveCard(t, n, ca, d, 443, "", 404, 503)
+	c.Refresh(t.Context())
+	c.Refresh(t.Context())
+	if e := deviceEntry(t, c, "devbox"); e.Temporary || e.Check != "http" || e.Status != StatusDown || e.Reason != "HTTP 503" {
+		t.Fatalf("legacy health: %+v", e)
+	}
+	cards, roots := srv.counts()
+	if cards != 1 || roots != 2 {
+		t.Fatalf("root 5xx caused card recovery: cards=%d roots=%d", cards, roots)
+	}
+}
+
+func TestPermanentExtraPortHasNoPeriodicHTTP(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	c.OverridesPath = writeOverrides(t, "'devbox:8443': {temporary: false}\n")
+	srv := serveCard(t, n, ca, d, 8443, "", 404, 0)
+	c.Refresh(t.Context())
+	c.Refresh(t.Context())
+	c.Refresh(t.Context())
+	e := deviceEntry(t, c, "devbox:8443")
+	requests, _ := srv.counts()
+	if e.Temporary || e.Check != "tls" || requests != 1 {
+		t.Fatalf("permanent pool health: %+v requests=%d", e, requests)
+	}
+}
+
+func TestCardDiagnosticsOnlyOnCategoryTransitions(t *testing.T) {
+	logs := captureLogs(t)
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	srv := serveCard(t, n, ca, d, 8443, "{invalid", 200, 0)
+	c.Refresh(t.Context())
+	c.Refresh(t.Context())
+	c.RefreshManualIfOlder(t.Context(), 0)
+	if strings.Count(logs.String(), "devbox:8443 card request: invalid") != 1 {
+		t.Fatalf("repeated category logged: %s", logs.String())
+	}
+	srv.set(`{}`)
+	c.RefreshManualIfOlder(t.Context(), 0)
+	srv.set(`{"title":null}`)
+	c.RefreshManualIfOlder(t.Context(), 0)
+	if strings.Count(logs.String(), "devbox:8443 card request: invalid") != 2 {
+		t.Fatalf("valid card did not reset category: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), `"title"`) {
+		t.Fatal("body leaked to diagnostic")
+	}
+}
+
+func TestCatalogDeviceTupleCursorAcrossSiblingPorts(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, _, _ := deviceCatalog(t, d)
+	for port := uint16(8443); port < 8459; port++ {
+		c.PreviewPorts = append(c.PreviewPorts, port)
+	}
+	c.scanBudget = 20 * time.Millisecond
+	var mu sync.Mutex
+	seen := map[string]int{}
+	c.DeviceProber.dial = func(_ context.Context, _ string, stringAddr string) (net.Conn, error) {
+		mu.Lock()
+		seen[stringAddr]++
+		mu.Unlock()
+		time.Sleep(200 * time.Millisecond)
+		return nil, errors.New("unreachable")
+	}
+	c.Refresh(t.Context())
+	firstPort := c.cursorPort
+	c.Refresh(t.Context())
+	if c.cursor != d.DNSName || c.cursorPort <= firstPort {
+		t.Fatalf("cursor did not advance across sibling ports: %s:%d after %d", c.cursor, c.cursorPort, firstPort)
+	}
+	mu.Lock()
+	for addr, count := range seen {
+		if count != 1 {
+			t.Errorf("%s probed %d times before wrap", addr, count)
+		}
+	}
+	if len(seen) != 16 {
+		t.Errorf("probed %d slots, want 16", len(seen))
+	}
+	mu.Unlock()
+	c.Refresh(t.Context())
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 17 || c.cursorPort >= firstPort {
+		t.Fatalf("cursor failed to wrap: %d slots, port %d", len(seen), c.cursorPort)
+	}
+}
+
+func TestSlowCardConsumesRootCheckDeadline(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.DeviceProber.timeout = 100 * time.Millisecond
+	n.addrs["100.64.0.1:443"] = serveDeviceTLS(t, ca.leaf(t, d.DNSName, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == cardPath {
+			// Start an object, then consume the rest of the endpoint deadline.
+			fmt.Fprint(w, `{"title":`)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	c.Refresh(t.Context())
+	if len(c.admitted) != 0 || len(c.View().all()) != 0 {
+		t.Fatalf("root check admitted an endpoint after its card consumed the deadline: %+v", c.View())
+	}
+}
+
+func TestPreviewIPv6ExtraPortIsPinned(t *testing.T) {
+	d := catalogDevice("node", "devbox", "fd7a:115c:a1e0::1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	n.addrs["[fd7a:115c:a1e0::1]:8443"] = serveDeviceTLS(t, ca.leaf(t, d.DNSName, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "devbox.ts.test:8443" || r.TLS.ServerName != d.DNSName || r.URL.Path != cardPath {
+			t.Errorf("unexpected IPv6 endpoint request: host=%s SNI=%s path=%s", r.Host, r.TLS.ServerName, r.URL.Path)
+		}
+		fmt.Fprint(w, `{"title":"IPv6 preview"}`)
+	}))
+	c.Refresh(t.Context())
+	if e := deviceEntry(t, c, "devbox:8443"); e.Label != "IPv6 preview" || e.URL != "https://devbox.ts.test:8443/" {
+		t.Fatalf("IPv6 extra port: %+v", e)
+	}
+}
+
+func TestNonObjectCardClearsMetadataWithoutDiagnostic(t *testing.T) {
+	logs := captureLogs(t)
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.PreviewPorts = []uint16{8443}
+	srv := serveCard(t, n, ca, d, 8443, `{"title":"Old preview","preview":true}`, 200, 0)
+	c.Refresh(t.Context())
+	srv.set(" \t\n<!doctype html><title>App catch-all</title>")
+	c.RefreshManualIfOlder(t.Context(), 0)
+	e := deviceEntry(t, c, "devbox:8443")
+	if e.Label != "Devbox :8443" || strings.Contains(logs.String(), "card request:") {
+		t.Fatalf("HTML fallback was not quiet absence: %+v logs=%s", e, logs.String())
+	}
+	if state := c.endpoints[endpointID{d.ID, 8443}]; state.card != nil || state.priorPreview {
+		t.Fatalf("HTML fallback retained card classification: %+v", state)
+	}
+}
+
+func TestManualUnverifiedListenerClearsImportedCard(t *testing.T) {
+	logs := captureLogs(t)
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	d.Tags = []string{"tag:dev"}
+	c, _, n, ca := deviceCatalog(t, d)
+	c.InsecureTLSTags = []string{"tag:dev"}
+	serveCard(t, n, ca, d, 443, `{"title":"Trusted title","preview":true}`, 200, 0)
+	c.Refresh(t.Context())
+	other := newDeviceCA(t)
+	n.addrs["100.64.0.1:443"] = serveDeviceTLS(t, other.leaf(t, d.DNSName, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("unverified listener received HTTP request")
+	}))
+	c.RefreshManualIfOlder(t.Context(), 0)
+	e := deviceEntry(t, c, "devbox")
+	if !e.Unverified || !e.Temporary || e.Label != "Devbox" || strings.Contains(logs.String(), "card:") {
+		t.Fatalf("unverified manual metadata: %+v logs=%s", e, logs.String())
+	}
+}
+
+func TestPreviewHintDisabledWithoutDeviceDiscovery(t *testing.T) {
+	c := newCatalog(&fakeLister{}, &fakeNet{}, "")
+	c.PreviewPorts = []uint16{8443}
+	c.Refresh(t.Context())
+	if c.View().PreviewEnabled {
+		t.Fatal("preview hint enabled when discovery is off")
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"iter"
 	"log"
 	"slices"
@@ -69,9 +70,22 @@ type Entry struct {
 	Copy        string   `json:"copy,omitempty"` // what a click copies under Other
 	Status      Status   `json:"status"`
 	Reason      string   `json:"reason,omitempty"` // why the last check failed
+	// Temporary entries are previews: listed under Previews while they answer,
+	// hidden instead of shown down.
+	Temporary bool `json:"temporary,omitempty"`
+	// Set and Version come from a preview card: versions of one thing, side by side.
+	Set     string `json:"set,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Check names what Status measured on a device: "tls" for a handshake
+	// only, "http" for an answer to GET /. Empty on Services.
+	Check string `json:"check,omitempty"`
+	// Unverified marks a device admitted under TAILHOME_DEVICE_INSECURE_TLS_TAGS
+	// whose certificate failed verification.
+	Unverified bool `json:"unverified,omitempty"`
 
-	order int
-	probe []string // candidate URLs for a Service on an unusual port
+	order  int
+	nodeID tailcfg.StableNodeID
+	probe  []string // candidate URLs for a Service on an unusual port
 }
 
 type Group struct {
@@ -80,11 +94,13 @@ type Group struct {
 }
 
 type View struct {
-	Groups  []Group   `json:"groups"`
-	Other   []Entry   `json:"other"`
-	Updated time.Time `json:"updated"`
-	Error   string    `json:"error,omitempty"`
-	Notices []Notice  `json:"notices,omitempty"`
+	Previews       []Entry   `json:"previews"` // sorted for display: single previews, then sets
+	Groups         []Group   `json:"groups"`
+	Other          []Entry   `json:"other"`
+	Updated        time.Time `json:"updated"`
+	Error          string    `json:"error,omitempty"`
+	Notices        []Notice  `json:"notices,omitempty"`
+	PreviewEnabled bool      `json:"-"`
 }
 
 // all flattens the page in order, one Entry per tile: a web Service's
@@ -92,6 +108,10 @@ type View struct {
 func (v View) all() []Entry {
 	all := []Entry{} // never nil: /api/list.json encodes [] rather than null
 	seen := map[string]bool{}
+	for _, e := range v.Previews {
+		seen[e.Name] = true
+	}
+	all = append(all, v.Previews...)
 	for _, g := range v.Groups {
 		for _, e := range g.Entries {
 			seen[e.Name] = true
@@ -119,15 +139,18 @@ type Catalog struct {
 	DeviceTags      []string                       // TAILHOME_DEVICE_TAGS; empty tries every member
 	InsecureTLSTags []string                       // TAILHOME_DEVICE_INSECURE_TLS_TAGS; members with one skip certificate verification
 	DeviceProber    *DeviceProber                  // required when Devices is set
+	PreviewPorts    []uint16
 
 	refreshMu      sync.Mutex        // serializes refreshes; guards discovery state, lastAttempt, warned
 	detected       map[string]string // Service name → URL that once answered HTTP
 	lastAttempt    time.Time
 	warned         map[string]bool
-	admitted       map[tailcfg.StableNodeID]Device // devices that once answered, as last listed
-	cursor         string                          // DNSName of the last candidate started; the next scan resumes after it
-	devicesFailing bool                            // last listing failed; logged on transition
-	scanBudget     time.Duration                   // zero uses the ten-second candidate scan budget
+	admitted       map[endpointID]Device // endpoints that once answered; kept until ineligible
+	endpoints      map[endpointID]*endpointState
+	cursor         string // last candidate DNS name and port started; resume after this tuple
+	cursorPort     uint16
+	devicesFailing bool          // last listing failed; logged on transition
+	scanBudget     time.Duration // zero uses the ten-second candidate scan budget
 
 	mu   sync.RWMutex // guards view
 	view View
@@ -151,7 +174,7 @@ func (c *Catalog) View() View {
 	defer c.mu.RUnlock()
 	v := c.view
 	if v.Groups == nil { // before the first refresh: JSON [] rather than null
-		v.Groups, v.Other = []Group{}, []Entry{}
+		v.Previews, v.Groups, v.Other = []Entry{}, []Group{}, []Entry{}
 	}
 	return v
 }
@@ -160,23 +183,24 @@ func (c *Catalog) View() View {
 func (c *Catalog) Refresh(ctx context.Context) {
 	c.refreshMu.Lock()
 	defer c.refreshMu.Unlock()
-	c.refresh(ctx)
+	c.refresh(ctx, false)
 }
 
-// RefreshIfOlder skips the refresh if the last attempt, failed or not, is
-// younger than age, so repeated clicks don't hammer the API.
-func (c *Catalog) RefreshIfOlder(ctx context.Context, age time.Duration) {
+// RefreshManualIfOlder runs a manual refresh, which also rereads preview
+// cards, unless the last attempt, failed or not, is younger than age, so
+// repeated clicks don't hammer the API.
+func (c *Catalog) RefreshManualIfOlder(ctx context.Context, age time.Duration) {
 	c.refreshMu.Lock()
 	defer c.refreshMu.Unlock()
 	if time.Since(c.lastAttempt) >= age {
-		c.refresh(ctx)
+		c.refresh(ctx, true)
 	}
 }
 
-func (c *Catalog) refresh(ctx context.Context) {
+func (c *Catalog) refresh(ctx context.Context, manual bool) {
 	// Stamped after the work, so a click queued behind a slow refresh is still throttled.
 	defer func() { c.lastAttempt = time.Now() }()
-	view, err := c.build(ctx)
+	view, err := c.build(ctx, manual)
 	if ctx.Err() != nil {
 		return
 	}
@@ -201,7 +225,7 @@ func (c *Catalog) warnOnce(key, format string, args ...any) {
 	log.Printf(format, args...)
 }
 
-func (c *Catalog) build(ctx context.Context) (View, error) {
+func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 	overrides, err := LoadOverrides(c.OverridesPath)
 	if err != nil {
 		return View{}, err
@@ -220,6 +244,9 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 	for _, svc := range services {
 		name := strings.TrimPrefix(svc.Name, "svc:")
 		reserved[name] = true
+		if overrides[name].Temporary != nil {
+			return View{}, fmt.Errorf("override %s: temporary applies only to device endpoints, not Services", name)
+		}
 		if svc.Name == c.Self {
 			selfFound = true
 			continue
@@ -247,28 +274,46 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 	}
 
 	c.Prober.Check(ctx, entries) // Services only: the insecure Service client must never vouch for a device, so device entries come after, already checked
-	deviceEntries, members := c.refreshDevices(ctx, reserved, overrides)
+	deviceEntries, members, err := c.refreshDevices(ctx, reserved, overrides, manual)
 	entries = append(entries, deviceEntries...)
+	if err != nil {
+		return View{}, fmt.Errorf("devices: listing failed: %w", err)
+	}
 	if err := ctx.Err(); err != nil { // shutting down: don't publish a view of failed probes
 		return View{}, err
 	}
 	for name := range overrides {
-		if !reserved[name] && !members[name] && !c.devicesFailing {
+		if !reserved[name] && !members[name] {
 			c.warnOnce("override:"+name, "warning: overrides file names %s, which is not a Service or device", name)
 		}
 	}
 
 	prev := map[string]Status{}
+	permanent := 0
 	for _, e := range c.View().all() {
 		prev[e.Name] = e.Status
+		if !e.Temporary {
+			permanent++
+		}
 	}
-	view := View{Groups: []Group{}, Other: []Entry{}, Updated: time.Now()}
+	view := View{Previews: []Entry{}, Groups: []Group{}, Other: []Entry{}, Updated: time.Now(), PreviewEnabled: c.Devices != nil && len(c.PreviewPorts) != 0}
+	for _, state := range c.endpoints {
+		view.PreviewEnabled = view.PreviewEnabled || state.temporary || state.priorPreview
+	}
 	if c.Notices != nil {
 		view.Notices = c.Notices(ctx)
 	}
 	detected := map[string]string{}
 	groups := map[string][]Entry{}
+	currentPermanent := 0
 	for _, e := range entries {
+		if e.Temporary {
+			if e.Status == StatusUp {
+				view.Previews = append(view.Previews, e)
+			}
+			continue
+		}
+		currentPermanent++
 		switch {
 		case e.Status == StatusDown && prev[e.Name] != StatusDown:
 			log.Printf("%s is down: %s", e.Name, e.Reason)
@@ -299,8 +344,9 @@ func (c *Catalog) build(ctx context.Context) (View, error) {
 	}
 	slices.SortFunc(view.Groups, func(a, b Group) int { return cmp.Compare(a.Name, b.Name) })
 	sortEntries(view.Other)
-	if len(entries) != len(prev) {
-		log.Printf("listing %d apps", len(entries))
+	sortPreviews(view.Previews)
+	if currentPermanent != permanent {
+		log.Printf("listing %d apps", currentPermanent)
 	}
 	return view, nil
 }
@@ -445,7 +491,25 @@ func iconURL(icon string) string {
 }
 
 func sortEntries(es []Entry) {
-	slices.SortFunc(es, func(a, b Entry) int {
-		return cmp.Or(cmp.Compare(a.order, b.order), cmp.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)))
+	slices.SortFunc(es, compareEntries)
+}
+
+func compareEntries(a, b Entry) int {
+	return cmp.Or(cmp.Compare(a.order, b.order), cmp.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)), cmp.Compare(a.Name, b.Name))
+}
+
+func sortPreviews(entries []Entry) {
+	rank := func(b bool) int {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	slices.SortFunc(entries, func(a, b Entry) int {
+		if n := cmp.Compare(rank(a.Set != ""), rank(b.Set != "")); n != 0 || a.Set == "" {
+			return cmp.Or(n, compareEntries(a, b)) // Singles first, by the app convention.
+		}
+		return cmp.Or(cmp.Compare(a.Set, b.Set), cmp.Compare(a.Host, b.Host), cmp.Compare(a.nodeID, b.nodeID),
+			cmp.Compare(rank(a.Version == ""), rank(b.Version == "")), cmp.Compare(a.Version, b.Version), compareEntries(a, b))
 	})
 }

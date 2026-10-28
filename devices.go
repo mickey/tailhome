@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,11 +33,10 @@ type Device struct {
 	Online  bool
 }
 
-// DeviceLister is implemented by localDevices and by test fakes.
+// DeviceLister supplies the current netmap peers for device discovery.
 type DeviceLister interface {
 	Devices(context.Context) ([]Device, error)
 }
-
 type localDevices struct{ lc *local.Client }
 
 func (l localDevices) Devices(ctx context.Context) ([]Device, error) {
@@ -58,84 +61,187 @@ func (l localDevices) Devices(ctx context.Context) ([]Device, error) {
 	return devices, nil
 }
 
-// DeviceProber fetches https://<name>/ from a device, dialled by IP so a name
-// that leaves MagicDNS can never resolve anywhere else.
-type DeviceProber struct {
-	dial    func(ctx context.Context, network, addr string) (net.Conn, error)
-	roots   *x509.CertPool // nil: system roots; tests pin a CA
-	timeout time.Duration  // zero: 5 s
+type endpointID struct {
+	node tailcfg.StableNodeID
+	port uint16
 }
 
-func (p *DeviceProber) probe(ctx context.Context, d Device, insecure bool) (answered bool, s Status, reason string, unverified bool) {
-	if !d.IP.IsValid() {
-		return false, StatusDown, "device has no Tailscale IP", false
-	}
-	timeout := cmp.Or(p.timeout, 5*time.Second)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	var verificationFailed atomic.Bool
-	tlsConfig := &tls.Config{RootCAs: p.roots, InsecureSkipVerify: insecure}
-	if insecure {
-		// The exception permits certificate errors, but only certificates that
-		// actually fail verification should carry the warning on their tile.
-		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
-			intermediates := x509.NewCertPool()
-			for _, cert := range cs.PeerCertificates[1:] {
-				intermediates.AddCert(cert)
-			}
-			_, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{
-				Roots: p.roots, DNSName: cs.ServerName, Intermediates: intermediates,
-			})
-			verificationFailed.Store(err != nil)
-			return nil
-		}
-	}
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				// The Transport detaches dials from the request's cancellation,
-				// so a SYN nobody answers would otherwise outlive the probe.
-				ctx, cancel := context.WithTimeout(ctx, timeout)
-				defer cancel()
-				return p.dial(ctx, network, netip.AddrPortFrom(d.IP, 443).String())
-			},
-			TLSHandshakeTimeout: timeout, // the handshake runs on the detached dial too
-			DisableKeepAlives:   true,
-			TLSClientConfig:     tlsConfig,
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	answered, status, reason := httpCheck(ctx, client, "https://"+d.DNSName+"/")
-	return answered, status, reason, verificationFailed.Load()
+// DeviceProber checks listeners dialled by IP so a name that leaves MagicDNS
+// can never resolve anywhere else.
+type DeviceProber struct {
+	dial    func(context.Context, string, string) (net.Conn, error)
+	roots   *x509.CertPool
+	timeout time.Duration
 }
 
 type deviceCheck struct {
 	Device
+	port       uint16
 	insecure   bool
-	candidate  bool // not yet admitted; an answer this refresh admits it
+	candidate  bool // not yet admitted; only candidates consume the scan-start budget
 	answered   bool
 	status     Status
 	reason     string
-	unverified bool // certificate failed verification under the exception
+	unverified bool
+	state      *endpointState
+	override   Override
+	diagnostic string
+	fetched    bool
 }
 
-// refreshDevices returns tiles for admitted devices and candidates that answered
-// this refresh, plus every member name for the override warning.
-func (c *Catalog) refreshDevices(ctx context.Context, reserved map[string]bool, overrides map[string]Override) ([]Entry, map[string]bool) {
-	if c.Devices == nil {
-		return nil, nil
+func (d deviceCheck) tlsOnly() bool { return d.port != 443 || d.state.temporary }
+func endpointName(bare string, port uint16) string {
+	if port == 443 {
+		return bare
 	}
-	listed := c.listDevices(ctx)
+	return bare + ":" + strconv.Itoa(int(port))
+}
+func endpointURL(dnsName string, port uint16) string {
+	host := dnsName
+	if port != 443 {
+		host = net.JoinHostPort(host, strconv.Itoa(int(port)))
+	}
+	return "https://" + host + "/"
+}
+func temporary(port uint16, s *endpointState, o Override) bool {
+	if o.Temporary != nil {
+		return *o.Temporary
+	}
+	return port != 443 || s.priorPreview || s.card != nil && s.card.Preview
+}
+
+// Every connection is pinned and shares the endpoint's one deadline. Cards may
+// use the listener connection only after its certificate has been verified.
+func (p *DeviceProber) check(parent context.Context, d *deviceCheck, manual bool) {
+	s := d.state
+	wasUp := s.tlsUp
+	d.status = StatusDown
+	s.tlsUp = false
+	if !d.IP.IsValid() {
+		d.reason = "device has no Tailscale IP"
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, cmp.Or(p.timeout, 5*time.Second))
+	defer cancel()
+	var unverified atomic.Bool
+	cfg := &tls.Config{RootCAs: p.roots, ServerName: d.DNSName, InsecureSkipVerify: d.insecure}
+	if d.insecure {
+		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			intermediates := x509.NewCertPool()
+			for _, cert := range cs.PeerCertificates[1:] {
+				intermediates.AddCert(cert)
+			}
+			_, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: p.roots, DNSName: d.DNSName, Intermediates: intermediates})
+			unverified.Store(err != nil)
+			return nil
+		}
+	}
+	dial := func() (*tls.Conn, error) {
+		raw, err := p.dial(ctx, "tcp", netip.AddrPortFrom(d.IP, d.port).String())
+		if err != nil {
+			return nil, err
+		}
+		conn := tls.Client(raw, cfg)
+		stop := context.AfterFunc(ctx, func() { conn.Close() })
+		if err = conn.HandshakeContext(ctx); err != nil {
+			stop()
+			conn.Close()
+			return nil, err
+		}
+		// The caller owns the connection, while cancellation also interrupts HTTP I/O.
+		return conn, nil
+	}
+	conn, err := dial()
+	if err != nil {
+		d.reason = err.Error()
+		return
+	}
+	defer conn.Close()
+	d.unverified = unverified.Load()
+	s.tlsUp = true
+	base := endpointURL(d.DNSName, d.port)
+	var used atomic.Bool
+	transport := &http.Transport{DialTLSContext: func(context.Context, string, string) (net.Conn, error) {
+		if !used.Swap(true) {
+			return conn, nil
+		}
+		return dial()
+	}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if d.candidate || !wasUp || manual {
+		d.fetched = true
+		if d.unverified {
+			// An unverifiable listener cannot supply display metadata, even manually.
+			s.card = nil
+		} else {
+			card, result := fetchCard(ctx, client, strings.TrimSuffix(base, "/")+cardPath)
+			s.applyCard(card, result, manual, !wasUp && !d.candidate)
+			if result != "ok" && result != "absent" {
+				d.diagnostic = result
+			}
+		}
+	}
+	s.temporary = temporary(d.port, s, d.override)
+	if d.tlsOnly() {
+		d.answered, d.status = true, StatusUp
+		return
+	}
+	d.answered, d.status, d.reason = httpCheck(ctx, client, base)
+}
+
+func fetchCard(ctx context.Context, client *http.Client, url string) (*previewCard, string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "HTTPS request failed"
+	}
+	req.Header.Set("User-Agent", userAgent())
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "HTTPS request failed"
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4097))
+		if err != nil {
+			return nil, "HTTPS request failed"
+		}
+		card, err := parseCard(bytes.NewReader(body))
+		if err != nil {
+			return nil, "invalid"
+		}
+		if card == nil {
+			return nil, "absent"
+		}
+		return card, "ok"
+	case 404, 410:
+		return nil, "absent"
+	default:
+		return nil, fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+}
+
+// refreshDevices reconciles endpoint admissions, probes eligible listeners and
+// builds entries with endpoint-specific overrides before card and fallback text.
+func (c *Catalog) refreshDevices(ctx context.Context, reserved map[string]bool, overrides map[string]Override, manual bool) ([]Entry, map[string]bool, error) {
+	if c.Devices == nil {
+		return nil, nil, nil
+	}
+	listed, err := c.listDevices(ctx)
 	if ctx.Err() != nil {
-		return nil, nil
+		return nil, nil, err
 	}
 	eligible, rejected, members := c.eligibleDevices(listed, reserved, overrides)
 	if c.admitted == nil {
-		c.admitted = map[tailcfg.StableNodeID]Device{}
+		c.admitted = map[endpointID]Device{}
+	}
+	if c.endpoints == nil {
+		c.endpoints = map[endpointID]*endpointState{}
 	}
 	for id, old := range c.admitted {
 		check, ok := eligible[id]
-		var reason string
+		reason := ""
 		switch {
 		case !ok:
 			reason = cmp.Or(rejected[id], "left the netmap")
@@ -144,130 +250,196 @@ func (c *Catalog) refreshDevices(ctx context.Context, reserved map[string]bool, 
 		case matchesDeviceTags(old.Tags, c.InsecureTLSTags) != check.insecure:
 			reason = "TLS policy changed"
 		default:
-			c.admitted[id] = check.Device // keeps the IP current
+			c.admitted[id] = check.Device
 			continue
 		}
-		log.Printf("device %s removed: %s", c.deviceName(old.DNSName), reason)
+		if state := c.endpoints[id]; state == nil || !state.temporary {
+			log.Printf("device %s removed: %s", endpointName(c.deviceName(old.DNSName), id.port), reason)
+		}
 		delete(c.admitted, id)
+		delete(c.endpoints, id)
+	}
+	// Diagnostics for failed candidates are bounded by the current eligible set.
+	for id := range c.endpoints {
+		if _, ok := eligible[id]; !ok && err == nil {
+			delete(c.endpoints, id)
+		}
 	}
 	var checks, candidates []deviceCheck
 	for id, check := range eligible {
-		switch _, admitted := c.admitted[id]; {
-		case admitted:
+		state := c.endpoints[id]
+		if state == nil || state.dnsName != check.DNSName || state.insecure != check.insecure {
+			state = &endpointState{dnsName: check.DNSName, insecure: check.insecure}
+			c.endpoints[id] = state
+		}
+		check.state = state
+		state.temporary = temporary(check.port, state, check.override)
+		if _, ok := c.admitted[id]; ok {
 			if !check.Online {
 				check.status, check.reason = StatusDown, "Device offline"
+				state.tlsUp = false
 			}
 			checks = append(checks, check)
-		case check.Online:
+		} else if check.Online && err == nil {
 			check.candidate = true
 			candidates = append(candidates, check)
 		}
 	}
-	byName := func(a, b deviceCheck) int { return cmp.Compare(a.DNSName, b.DNSName) }
-	slices.SortFunc(checks, byName)
-	slices.SortFunc(candidates, byName)
-	// Resume after the last candidate started and wrap, so short scans still reach every peer.
-	start := sort.Search(len(candidates), func(i int) bool { return candidates[i].DNSName > c.cursor })
+	byEndpoint := func(a, b deviceCheck) int {
+		return cmp.Or(cmp.Compare(a.DNSName, b.DNSName), cmp.Compare(a.port, b.port))
+	}
+	slices.SortFunc(checks, byEndpoint)
+	slices.SortFunc(candidates, byEndpoint)
+	start := sort.Search(len(candidates), func(i int) bool {
+		d := candidates[i]
+		return d.DNSName > c.cursor || d.DNSName == c.cursor && d.port > c.cursorPort
+	})
 	checks = append(checks, candidates[start:]...)
 	checks = append(checks, candidates[:start]...)
-	shown := c.probeDevices(ctx, checks)
+	shown := c.probeDevices(ctx, checks, manual)
 	if ctx.Err() != nil {
-		return nil, members
+		return nil, members, err
 	}
 	entries := make([]Entry, 0, shown)
 	for _, check := range checks[:shown] {
-		name := c.deviceName(check.DNSName)
+		bare := c.deviceName(check.DNSName)
+		name := endpointName(bare, check.port)
+		state := check.state
+		if check.fetched && check.diagnostic != state.diagnostic {
+			if check.diagnostic != "" {
+				log.Printf("device %s card request: %s", name, check.diagnostic)
+			}
+			state.diagnostic = check.diagnostic
+		}
 		if check.candidate && !check.answered {
-			// Go renders certificate verification failures with an "x509:" reason.
-			if !check.insecure && strings.Contains(check.reason, "x509:") {
-				advice := "add one of its tags to TAILHOME_DEVICE_INSECURE_TLS_TAGS."
-				if len(check.Tags) == 0 {
-					advice = "tag it and add the tag to TAILHOME_DEVICE_INSECURE_TLS_TAGS."
+			if strings.Contains(check.reason, "x509:") {
+				advice := "tag it and add the tag"
+				if len(check.Tags) != 0 {
+					advice = "add one of its tags"
 				}
-				c.warnOnce("insecure:"+name, "%s answers HTTPS with a certificate tailhome can't verify, so it has no tile. To show it anyway, %s", name, advice)
+				c.warnOnce("insecure:"+name, "%s answers HTTPS with a certificate tailhome can't verify, so it has no tile. To show it anyway, %s to TAILHOME_DEVICE_INSECURE_TLS_TAGS.", name, advice)
 			}
 			continue
 		}
 		if check.candidate {
-			c.admitted[check.ID] = check.Device
-			log.Printf("device %s listed", name)
+			c.admitted[endpointID{check.ID, check.port}] = check.Device
+			if !state.temporary {
+				log.Printf("device %s listed", name)
+			}
 		}
-		e := newDeviceEntry(name, check.DNSName, check.unverified, overrides[name])
-		if overrides[name].Icon == "" && c.Icons != nil {
-			e.Icon = c.Icons.url(name)
-		}
-		e.Status, e.Reason = check.status, check.reason
-		entries = append(entries, e)
+		entries = append(entries, c.entryFor(check, name, bare))
 	}
-	return entries, members
+	return entries, members, err
 }
 
-// listDevices returns the tailnet's devices or, while listing fails, the
-// admitted ones as last seen, so they are still checked.
-func (c *Catalog) listDevices(ctx context.Context) []Device {
+func (c *Catalog) entryFor(check deviceCheck, name, bare string) Entry {
+	state := check.state
+	e := Entry{
+		Name: name, Source: "device", Host: check.DNSName, nodeID: check.ID,
+		Description: check.override.Description, Group: cmp.Or(check.override.Group, "Apps"),
+		Ports: []string{fmt.Sprintf("tcp:%d", check.port)},
+		URL:   cmp.Or(check.override.URL, endpointURL(check.DNSName, check.port)),
+		order: check.override.Order, Unverified: check.unverified,
+	}
+	fallback := titleCase(bare)
+	if check.port != 443 {
+		fallback += " :" + strconv.Itoa(int(check.port))
+	}
+	e.Label = cmp.Or(check.override.Label, fallback)
+	icon := bare
+	if state.card != nil {
+		e.Label = cmp.Or(check.override.Label, state.card.Title, fallback)
+		e.Description = cmp.Or(check.override.Description, state.card.Description)
+		icon = cmp.Or(state.card.Icon, bare)
+		if state.temporary {
+			e.Set, e.Version = state.card.Set, state.card.Version
+		}
+	}
+	if check.override.Icon != "" {
+		e.Icon = iconURL(check.override.Icon)
+	} else if icon == bare && c.Icons != nil {
+		e.Icon = c.Icons.url(bare)
+	} else {
+		e.Icon = iconURL(icon)
+	}
+	e.Temporary = state.temporary
+	e.Check = "http"
+	if check.tlsOnly() {
+		e.Check = "tls"
+	}
+	e.Status, e.Reason = check.status, check.reason
+	return e
+}
+
+// Failed listings supply deduplicated peers for checks, never evidence of removal.
+func (c *Catalog) listDevices(ctx context.Context) ([]Device, error) {
 	listed, err := c.Devices.Devices(ctx)
-	if ctx.Err() != nil { // shutting down: refreshDevices drops the result
-		return nil
+	if ctx.Err() != nil {
+		return nil, err
 	}
 	if err != nil {
+		listed = nil
 		if !c.devicesFailing {
 			log.Printf("devices: listing failed: %v", err)
 		}
 		c.devicesFailing = true
-		listed = make([]Device, 0, len(c.admitted))
-		for _, d := range c.admitted {
-			d.Online = true // a listing outage is no evidence that a device left
-			listed = append(listed, d)
+		seen := map[tailcfg.StableNodeID]bool{}
+		for id, d := range c.admitted {
+			if !seen[id.node] {
+				d.Online = true
+				listed = append(listed, d)
+				seen[id.node] = true
+			}
 		}
 	} else if c.devicesFailing {
 		log.Printf("devices: listing works again")
 		c.devicesFailing = false
 	}
-	return listed
+	return listed, err
 }
 
-// eligibleDevices applies membership, Service-name, hidden and tag rules.
-// rejected holds exclusion reasons; members holds every tailnet member name
-// for the override warning.
-func (c *Catalog) eligibleDevices(listed []Device, reserved map[string]bool, overrides map[string]Override) (eligible map[tailcfg.StableNodeID]deviceCheck, rejected map[tailcfg.StableNodeID]string, members map[string]bool) {
-	eligible = map[tailcfg.StableNodeID]deviceCheck{}
-	rejected = map[tailcfg.StableNodeID]string{}
-	members = map[string]bool{}
+// eligibleDevices expands each peer into independent port slots; device-owned
+// hidden parents cover every slot, while a Service collision reserves only 443.
+func (c *Catalog) eligibleDevices(listed []Device, reserved map[string]bool, overrides map[string]Override) (map[endpointID]deviceCheck, map[endpointID]string, map[string]bool) {
+	eligible := map[endpointID]deviceCheck{}
+	rejected := map[endpointID]string{}
+	members := map[string]bool{}
+	ports := append([]uint16{443}, c.PreviewPorts...)
 	for _, d := range listed {
-		name := c.deviceName(d.DNSName)
-		if name == "" {
-			rejected[d.ID] = "no longer a member of this tailnet"
-			continue
+		bare := c.deviceName(d.DNSName)
+		for _, port := range ports {
+			id := endpointID{d.ID, port}
+			name := endpointName(bare, port)
+			if bare == "" {
+				rejected[id] = "no longer a member of this tailnet"
+				continue
+			}
+			members[name] = true
+			switch {
+			case !reserved[bare] && overrides[bare].Hidden || port != 443 && overrides[name].Hidden:
+				rejected[id] = "hidden"
+			case len(c.DeviceTags) != 0 && !matchesDeviceTags(d.Tags, c.DeviceTags):
+				rejected[id] = "no longer matches device tags"
+			case port == 443 && reserved[bare]:
+				rejected[id] = "Service name collision"
+				c.warnOnce("collision:"+bare, "warning: device %s shares a Service name; the Service takes precedence", bare)
+			default:
+				eligible[id] = deviceCheck{Device: d, port: port, insecure: matchesDeviceTags(d.Tags, c.InsecureTLSTags), override: overrides[name]}
+			}
 		}
-		members[name] = true
-		if reserved[name] {
-			rejected[d.ID] = "Service name collision"
-			c.warnOnce("collision:"+name, "warning: device %s shares a Service name; the Service takes precedence", name)
-			continue
-		}
-		if overrides[name].Hidden {
-			rejected[d.ID] = "hidden"
-			continue
-		}
-		if len(c.DeviceTags) != 0 && !matchesDeviceTags(d.Tags, c.DeviceTags) {
-			rejected[d.ID] = "no longer matches device tags"
-			continue
-		}
-		eligible[d.ID] = deviceCheck{Device: d, insecure: matchesDeviceTags(d.Tags, c.InsecureTLSTags)}
 	}
 	return eligible, rejected, members
 }
 
-// probeDevices checks admitted devices, then candidates until the scan budget
-// ends, and returns the prefix to show, including offline admitted devices.
-func (c *Catalog) probeDevices(ctx context.Context, checks []deviceCheck) (shown int) {
+// probeDevices checks admitted endpoints first, then starts candidates within
+// the scan budget. Each worker gives an endpoint its own shared deadline.
+func (c *Catalog) probeDevices(ctx context.Context, checks []deviceCheck, manual bool) (shown int) {
 	jobs := make(chan int)
 	var workers sync.WaitGroup
 	for range min(8, len(checks)) {
 		workers.Go(func() {
 			for i := range jobs {
-				check := &checks[i]
-				check.answered, check.status, check.reason, check.unverified = c.DeviceProber.probe(ctx, check.Device, check.insecure)
+				c.DeviceProber.check(ctx, &checks[i], manual)
 			}
 		})
 	}
@@ -277,7 +449,11 @@ scan:
 		if !check.candidate {
 			shown = i + 1
 			if check.Online {
-				jobs <- i
+				select {
+				case jobs <- i:
+				case <-ctx.Done():
+					break scan
+				}
 			}
 			continue
 		}
@@ -286,10 +462,10 @@ scan:
 		}
 		select {
 		case jobs <- i:
-			c.cursor, shown = check.DNSName, i+1
+			c.cursor, c.cursorPort, shown = check.DNSName, check.port, i+1
 		case <-ctx.Done():
 			break scan
-		case <-budget: // only candidate starts are bounded; in-flight probes finish
+		case <-budget:
 			break scan
 		}
 	}
@@ -297,31 +473,11 @@ scan:
 	workers.Wait()
 	return shown
 }
-
-func newDeviceEntry(name, dnsName string, unverified bool, o Override) Entry {
-	description := ""
-	if unverified {
-		description = "Unverified HTTPS"
-	}
-	return Entry{
-		Name:        name,
-		Source:      "device",
-		Label:       cmp.Or(o.Label, titleCase(name)),
-		Description: cmp.Or(o.Description, description),
-		Group:       cmp.Or(o.Group, "Apps"),
-		Icon:        iconURL(cmp.Or(o.Icon, name)),
-		Host:        dnsName,
-		Ports:       []string{"tcp:443"},
-		URL:         cmp.Or(o.URL, "https://"+dnsName+"/"),
-		order:       o.Order,
-	}
-}
-
 func matchesDeviceTags(tags, filter []string) bool {
 	return slices.ContainsFunc(tags, func(tag string) bool { return slices.Contains(filter, tag) })
 }
 
-// deviceName returns the bare name of a device of this tailnet, or "" for one shared in from another.
+// deviceName accepts only a single host label in this tailnet's DNS suffix.
 func (c *Catalog) deviceName(dnsName string) string {
 	name, ok := strings.CutSuffix(dnsName, "."+c.DNSSuffix)
 	if !ok || name == "" || strings.Contains(name, ".") {
