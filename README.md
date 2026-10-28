@@ -18,10 +18,7 @@ It runs as one container (about 12 MB, Linux amd64, arm64 and armv7) or one bina
 
 tailhome is pre-1.0 with one maintainer, who runs it daily. Settings and defaults may change between 0.x releases; read the [release notes](https://github.com/mickey/tailhome/releases) before upgrading.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img alt="tailhome at home/, with several versions of a coding agent's preview at the top, app tiles with health dots, and connection details for non-web Services." src="docs/screenshot.png">
-</picture>
+<img alt="tailhome at home/ in the light and dark themes, side by side, with two versions of a coding agent's preview at the top, app tiles with health dots, and connection details for non-web Services." src="docs/screenshot.png">
 
 <sub>Groups and descriptions shown here use overrides or OAuth. New installs group apps under Apps.</sub>
 
@@ -85,6 +82,11 @@ tailhome needs no host ports, Docker socket or extra capabilities. See the setup
 ## Previews from coding agents
 
 With the optional [tailnet-preview skill](skills/tailnet-preview/), a coding agent publishes the app it is working on with `tailscale serve`, hands you a private HTTPS link and later removes only what it published. tailhome lists each preview at the top of the page, with the title and description the agent chose.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
+  <img alt="A coding agent in a terminal publishes three versions of a landing page hero and lists their links; on a phone, home/ shows them at the top as Landing redesign, 3 versions, with badges A, B and C." src="docs/agents.png">
+</picture>
 
 The skill runs on the machine where the app runs, your laptop or a remote server, and needs Python 3.9 or later and the Tailscale CLI. It also works without tailhome.
 
