@@ -93,7 +93,7 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	// The web app manifest lets phones add the page to the home screen as an app.
 	manifest, err := json.Marshal(map[string]any{
 		"name": title, "short_name": title, "id": "/", "start_url": "/", "scope": "/",
-		"display": "standalone", "background_color": "#2f9e5b", "theme_color": "#2f9e5b",
+		"display": "standalone", "background_color": "#1c1c1a", "theme_color": "#1c1c1a",
 		"icons": []map[string]string{
 			{"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
 			{"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
