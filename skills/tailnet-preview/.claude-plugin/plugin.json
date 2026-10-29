@@ -6,7 +6,7 @@
   "repository": "https://github.com/mickey/tailhome",
   "license": "MIT",
   "keywords": ["tailscale", "preview", "tailhome", "dev-server"],
-  "icon": "./icon.png",
+  "icon": "./logo.png",
   "documentationUrl": "https://github.com/mickey/tailhome/blob/main/skills/tailnet-preview/README.md",
   "supportUrl": "https://github.com/mickey/tailhome/issues",
   "privacyPolicyUrl": "https://github.com/mickey/tailhome/blob/main/skills/tailnet-preview/PRIVACY.md",
