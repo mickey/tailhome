@@ -1,0 +1,10 @@
+{
+  "name": "tailnet-preview",
+  "description": "Publish private development previews over Tailscale Serve, check the HTTPS link, list them in tailhome, and remove only what was published.",
+  "author": { "name": "mickey", "url": "https://github.com/mickey" },
+  "homepage": "https://github.com/mickey/tailhome/tree/main/skills/tailnet-preview",
+  "repository": "https://github.com/mickey/tailhome",
+  "license": "MIT",
+  "keywords": ["tailscale", "preview", "tailhome", "dev-server"],
+  "skills": ["./"]
+}

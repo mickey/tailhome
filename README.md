@@ -95,6 +95,31 @@ npx skills add mickey/tailhome --skill tailnet-preview -g
 ```
 
 <details>
+<summary>Install as a Claude Code, omp or Gemini CLI plugin</summary>
+
+Claude Code:
+
+```text
+/plugin marketplace add mickey/tailhome
+/plugin install tailnet-preview@tailhome
+```
+
+omp:
+
+```sh
+omp plugin marketplace add mickey/tailhome
+omp plugin install tailnet-preview@tailhome
+```
+
+Gemini CLI:
+
+```sh
+gemini extensions install https://github.com/mickey/tailhome
+```
+
+</details>
+
+<details>
 <summary>Install without Node, or for an agent that npx skills doesn't list</summary>
 
 Copy the skill where your agent finds skills. Many clients read `~/.agents/skills`; Claude Code reads `~/.claude/skills`:

@@ -1,0 +1,12 @@
+{
+  "name": "tailhome",
+  "owner": { "name": "mickey", "url": "https://github.com/mickey" },
+  "description": "Agent skills from tailhome, the start page that builds itself from your tailnet.",
+  "plugins": [
+    {
+      "name": "tailnet-preview",
+      "source": "./skills/tailnet-preview",
+      "description": "Publish private development previews over Tailscale Serve, check the HTTPS link, list them in tailhome, and remove only what was published."
+    }
+  ]
+}

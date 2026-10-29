@@ -1,0 +1,5 @@
+{
+  "name": "tailnet-preview",
+  "version": "0.7.1",
+  "description": "Publish private development previews over Tailscale Serve, check the HTTPS link, list them in tailhome, and remove only what was published."
+}
