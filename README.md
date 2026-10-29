@@ -88,18 +88,16 @@ With the optional [tailnet-preview skill](skills/tailnet-preview/), a coding age
   <img alt="A coding agent in a terminal publishes three versions of a landing page hero and lists their links; on a phone, home/ shows them at the top as Landing redesign, 3 versions, with badges A, B and C." src="docs/agents.png">
 </picture>
 
-The skill runs on the machine where the app runs, your laptop or a remote server, and needs Python 3.9 or later and the Tailscale CLI. It also works without tailhome.
+The skill runs on the machine where the app runs, your laptop or a remote server, and needs Python 3.9 or later and the Tailscale CLI. It also works without tailhome. Install it there, and pick your agent when asked:
 
-> [!IMPORTANT]
-> Extra preview ports are off by default. To list previews on the skill's suggested range, add this to tailhome's `environment:` in `compose.yaml`, then run `docker compose up -d`:
->
-> ```yaml
-> TAILHOME_PREVIEW_PORTS: 8443-8452
-> ```
->
-> Without it, agents can still publish previews on those ports and hand you links, but `home/` won't show them. A preview on port 443 with a card appears either way. See [preview ports](docs/setup.md#preview-ports) for other ranges and limits.
+```sh
+npx skills add mickey/tailhome --skill tailnet-preview -g
+```
 
-Install it where your agent finds skills. Many clients read `~/.agents/skills`; Claude Code reads `~/.claude/skills`:
+<details>
+<summary>Install without npm, or for an agent that npx skills doesn't list</summary>
+
+Copy the skill where your agent finds skills. Many clients read `~/.agents/skills`; Claude Code reads `~/.claude/skills`:
 
 ```sh
 git clone --depth 1 https://github.com/mickey/tailhome.git
@@ -108,9 +106,20 @@ cp -R tailhome/skills/tailnet-preview ~/.agents/skills/
 ln -s ~/.agents/skills/tailnet-preview ~/.claude/skills/tailnet-preview
 ```
 
-Or run `npx skills add mickey/tailhome --skill tailnet-preview`. The [installation reference](skills/tailnet-preview/references/serve.md#installation-and-updates) covers other clients, the Tailscale CLI on macOS and Python.
+The [installation reference](skills/tailnet-preview/references/serve.md#installation-and-updates) covers other clients, the Tailscale CLI on macOS and Python.
 
-The first time, the agent asks which HTTPS ports it may use and suggests the same range, 8443-8452. Your approval in the chat is enough. To skip the question next time, set `TAILNET_PREVIEW_PORTS` in the agent's environment.
+</details>
+
+The first time, the agent asks which HTTPS ports it may use and suggests 8443-8452. Your approval in the chat is enough. To skip the question next time, set `TAILNET_PREVIEW_PORTS` in the agent's environment.
+
+> [!IMPORTANT]
+> Extra preview ports are off by default. To list previews on that range, add this to tailhome's `environment:` in `compose.yaml`, then run `docker compose up -d`:
+>
+> ```yaml
+> TAILHOME_PREVIEW_PORTS: 8443-8452
+> ```
+>
+> Without it, agents can still publish previews on those ports and hand you links, but `home/` won't show them. A preview on port 443 with a card appears either way. See [preview ports](docs/setup.md#preview-ports) for other ranges and limits.
 
 A preview is private to your tailnet, not to you: anyone your Tailscale policy lets in can open it, and anyone who can open tailhome sees its title. It runs only while the app does, so keep that machine awake. See [preview privacy and lifetime](docs/apps.md#previews).
 
