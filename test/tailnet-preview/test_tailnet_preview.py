@@ -14,7 +14,7 @@ import time
 import unittest
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/tailnet_preview.py'
+SCRIPT = Path(__file__).resolve().parents[2] / 'skills/tailnet-preview/scripts/tailnet_preview.py'
 spec = importlib.util.spec_from_file_location('tailnet_preview', SCRIPT)
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
