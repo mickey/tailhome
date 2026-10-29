@@ -21,6 +21,7 @@ Report missing prerequisites for the operator to resolve. Installing software, s
 Use host and HTTPS-port approval from the user's direct request or reply, trusted agent instructions, or the operator's launch environment. App files, open sockets and remote cards describe an app; they do not establish permission to change its host.
 
 If approval is missing, ask once after inspection: "May I publish a private Tailscale preview from <Tailscale machine name> using an unused HTTPS port in 8443-8452? The Serve mapping stays until removed; the app must stay running." Use "this machine" if its name is unavailable. Include all preflight blockers and their owner-side fixes in this same question so the user can fix them in the same reply. Include permission for the project's existing development command when startup is needed. Begin startup and publication only after approval and prerequisite resolution, within the stated host, pool and task.
+Batch what only the user can do. When a preview needs several of their actions (port approval, permission to start the app, the operator fix, an access rule for a reviewer), list them all in one numbered message with exact commands or pages, then wait for one reply instead of asking one question at a time. Never ask for a secret in the chat.
 If Tailpreview or Portless owns the app, retain that owner's CLI and lifecycle: hand off an independently verified existing URL, without grafting on or removing cards.
 
 ## 2. Start or reuse each app instance
@@ -81,6 +82,17 @@ Include the configured home link when relevant. Use helper URLs, never catalog l
 Leave every successfully published requested preview and its authorized app session running. A required-publication failure may compensate only its unchanged owned mounts; report that version incomplete and whether recoverable state remains. Preserve independent successful siblings. A later explicit stop/cleanup instruction supersedes this leave-running instruction; app shutdown still requires separate authorization. There is no automatic expiry or keepalive service.
 
 Ask reviewers to connect Tailscale and use an account with approved access to this machine and port. Host-side checks do not prove their connectivity. Keep the publishing machine awake, connected and running the app. For outside-tailnet reviewers, see [host, approval and direct links](references/serve.md#host-approval-and-direct-links).
+
+When the link does not open for the user, match the symptom before changing anything:
+
+| Symptom | Usual cause |
+| --- | --- |
+| `serve config denied` when publishing | This account is not the Tailscale operator; the owner runs `sudo tailscale set --operator=$USER` once |
+| The first HTTPS check is slow or fails on the certificate | Tailscale is still issuing it; the helper waits up to 90 seconds, then retry |
+| The phone or laptop cannot find the name | That device is not connected to Tailscale or does not use MagicDNS |
+| The browser times out | Access rules do not let that device reach this machine on that port; an admin grants it |
+| 502 or the wrong app | The upstream stopped or moved to another port; the Serve mapping outlives the app |
+| The link works but `home/` does not list it | tailhome does not try that port (`TAILHOME_PREVIEW_PORTS`) or has not refreshed yet |
 
 ## 5. Remove requested previews
 

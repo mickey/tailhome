@@ -83,6 +83,16 @@ tailhome needs no host ports, Docker socket or extra capabilities. See the setup
 
 With the optional [tailnet-preview skill](skills/tailnet-preview/), a coding agent publishes the app it is working on with `tailscale serve`, hands you a private HTTPS link and later removes only what it published. tailhome lists each preview at the top of the page, with the title and description the agent chose.
 
+> [!TIP]
+> Using a coding agent? Paste this into it, in the project you are working on:
+>
+> ```text
+> Install the tailnet-preview skill from https://github.com/mickey/tailhome
+> (npx skills add mickey/tailhome --skill tailnet-preview -g), read its SKILL.md, then
+> publish this app as a private preview I can open on my phone. Give me, in one list,
+> anything only I can do, and never ask me for a secret.
+> ```
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
   <img alt="A coding agent in a terminal publishes three versions of a landing page hero and lists their links; on a phone, home/ shows them at the top as Landing redesign, 3 versions, with badges A, B and C." src="docs/agents.png">
@@ -180,3 +190,5 @@ See [all fields](docs/customize.md) and [`overrides.example.yaml`](overrides.exa
 - Previews on different ports of one device share its cookies. Don't publish an untrusted preview on a device whose other apps keep you logged in.
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under [MIT](LICENSE).
+
+Tailscale is a trademark of Tailscale Inc. tailhome is not affiliated with or endorsed by Tailscale.
