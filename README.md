@@ -114,7 +114,7 @@ omp plugin install tailnet-preview@tailhome
 Gemini CLI:
 
 ```sh
-gemini extensions install https://github.com/mickey/tailhome
+gemini extensions install https://github.com/mickey/tailhome --ref main
 ```
 
 </details>
