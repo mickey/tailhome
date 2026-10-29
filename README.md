@@ -6,34 +6,34 @@
 
 The start page that builds itself from your tailnet.
 
+A self-hosted launcher for your [Tailscale](https://tailscale.com/) network: published apps and coding agents' previews, at `http://home/`.
+
 [![Release](https://img.shields.io/github/v/release/mickey/tailhome)](https://github.com/mickey/tailhome/releases)
 [![Release date](https://img.shields.io/github/release-date/mickey/tailhome)](https://github.com/mickey/tailhome/releases)
 [![License: MIT](https://img.shields.io/github/license/mickey/tailhome)](LICENSE)
 
 </div>
 
-tailhome is a start page for your homelab and your coding agents' work. It finds your [Tailscale Services](https://tailscale.com/docs/features/tailscale-services), device apps and agent previews, then lists them at `http://home/`. Each web app gets a link; the rest, such as SSH or Postgres, get a copyable address.
+Web apps get links; others, such as SSH or Postgres, get copyable addresses. tailhome runs as one container (Linux amd64, arm64 and armv7) or one binary (also macOS and Windows). It [joins your tailnet itself](https://tailscale.com/docs/features/tsnet), so it needs no Tailscale on the host and no API credentials.
 
-It runs as one container (about 12 MB, Linux amd64, arm64 and armv7) or one binary (also macOS and Windows). It [joins your tailnet itself](https://tailscale.com/docs/features/tsnet), so it needs no Tailscale on the host and no API credentials.
+It checks the devices it can reach, including other members' laptops and phones, and everyone who can open it sees the whole list. See [security and privacy](#security-and-privacy).
 
 tailhome is pre-1.0 with one maintainer, who runs it daily. Settings and defaults may change between 0.x releases; read the [release notes](https://github.com/mickey/tailhome/releases) before upgrading.
 
-<img alt="tailhome at home/ in the light and dark themes, side by side, with two versions of a coding agent's preview at the top, app tiles with health dots, and connection details for non-web Services." src="docs/screenshot.png">
+<img alt="tailhome at home/ in two browser windows, the light theme in front of the dark one, with two versions of a coding agent's preview at the top, app tiles with health dots, and connection details for non-web Services." src="docs/screenshot.png">
 
 <sub>Groups and descriptions shown here use overrides or OAuth. New installs group apps under Apps.</sub>
 
 ## Why tailhome
 
-tailhome keeps your app list up to date by discovering what you publish on your tailnet with `tailscale serve`, [DockTail or TSDProxy](docs/apps.md#publish-container-apps). Your coding agents' work appears too. With the [tailnet-preview skill](skills/tailnet-preview/), an agent publishes what it built as a private HTTPS preview, and tailhome lists it above your apps with the title and description the agent chose. Ask for three versions and they share one heading, as A, B and C.
+tailhome keeps your app list up to date by discovering what you publish on your tailnet with `tailscale serve`, [DockTail or TSDProxy](docs/apps.md#publish-container-apps). Your coding agents' work appears too: with the [tailnet-preview skill](#previews-from-coding-agents), an agent publishes what it built as a private HTTPS preview, and tailhome lists it above your apps. Ask for three versions and they share one heading, as A, B and C.
 
-It is a launcher, not a dashboard. [Homepage](https://gethomepage.dev) and [Glance](https://github.com/glanceapp/glance) have widgets and feeds; tailhome can [feed them its app list](docs/customize.md#homepage-and-glance).
-
-On each device, tailhome tries only port 443 and the [preview ports](docs/setup.md#preview-ports) you allow. It does not read Docker labels or look behind reverse proxies.
+It is a launcher, not a dashboard. [Homepage](https://gethomepage.dev) and [Glance](https://github.com/glanceapp/glance) have widgets and feeds; tailhome can [feed them its app list](docs/customize.md#homepage-and-glance). It does not read Docker labels or look behind reverse proxies.
 
 ## Which apps appear
 
-- A Tailscale Service tailhome can reach, or every Service with an OAuth client.
-- An app on its own tailnet device that answers HTTPS on port 443.
+- A [Tailscale Service](https://tailscale.com/docs/features/tailscale-services) tailhome can reach. Optional [OAuth](docs/setup.md#set-up-oauth) also lists Services it cannot reach.
+- A device app: an app at a device's own tailnet name on HTTPS port 443. Apps behind paths or a shared proxy need [separate publishing](docs/apps.md#app-on-another-port).
 - A preview a coding agent published with `tailscale serve`, on port 443 or on a [preview port](docs/setup.md#preview-ports) you allow.
 
 An app at `nas:8080` appears once you [publish it with one command](docs/apps.md#app-on-another-port). See [discovery rules, certificates and publishing tools](docs/apps.md).
@@ -47,7 +47,7 @@ Before you start:
 - On devices that open Services, use Tailscale 1.86 or later. On Linux before 1.94, also run `sudo tailscale set --accept-routes`.
 
 Create [`compose.yaml`](compose.yaml). The `env_file` and `./config` lines are optional:
-`.env` holds OAuth credentials, and `config/overrides.yaml` holds tile overrides.
+`.env` holds OAuth credentials, and `config/overrides.yaml` holds tile overrides. A missing overrides file is fine.
 
 ```yaml
 services:
@@ -88,14 +88,14 @@ With the optional [tailnet-preview skill](skills/tailnet-preview/), a coding age
   <img alt="A coding agent in a terminal publishes three versions of a landing page hero and lists their links; on a phone, home/ shows them at the top as Landing redesign, 3 versions, with badges A, B and C." src="docs/agents.png">
 </picture>
 
-The skill runs on the machine where the app runs, your laptop or a remote server, and needs Python 3.9 or later and the Tailscale CLI. It also works without tailhome. Install it there, and pick your agent when asked:
+The skill runs on the machine where the app runs, your laptop or a remote server, on Linux or macOS. It needs Python 3.9 or later and the Tailscale CLI, and works without tailhome. Install it there with Node 22.20 or later, and pick your agent when asked:
 
 ```sh
 npx skills add mickey/tailhome --skill tailnet-preview -g
 ```
 
 <details>
-<summary>Install without npm, or for an agent that npx skills doesn't list</summary>
+<summary>Install without Node, or for an agent that npx skills doesn't list</summary>
 
 Copy the skill where your agent finds skills. Many clients read `~/.agents/skills`; Claude Code reads `~/.claude/skills`:
 
@@ -110,7 +110,7 @@ The [installation reference](skills/tailnet-preview/references/serve.md#installa
 
 </details>
 
-The first time, the agent asks which HTTPS ports it may use and suggests 8443-8452. Your approval in the chat is enough. To skip the question next time, set `TAILNET_PREVIEW_PORTS` in the agent's environment.
+The first time, the agent asks which HTTPS ports it may use and suggests 8443-8452. Chat approval authorizes publishing; listing extra ports in tailhome needs the setting below. To skip the question next time, set `TAILNET_PREVIEW_PORTS` in the agent's environment.
 
 > [!IMPORTANT]
 > Extra preview ports are off by default. To list previews on that range, add this to tailhome's `environment:` in `compose.yaml`, then run `docker compose up -d`:
@@ -119,9 +119,9 @@ The first time, the agent asks which HTTPS ports it may use and suggests 8443-84
 > TAILHOME_PREVIEW_PORTS: 8443-8452
 > ```
 >
-> Without it, agents can still publish previews on those ports and hand you links, but `home/` won't show them. A preview on port 443 with a card appears either way. See [preview ports](docs/setup.md#preview-ports) for other ranges and limits.
+> Without it, agents can still publish previews on those ports and hand you links, but `home/` won't show them. Port 443 needs no extra-port setting: the skill's [preview card](docs/apps.md#preview-cards), a JSON description marked `preview: true`, identifies it as a preview.
 
-A preview is private to your tailnet, not to you: anyone your Tailscale policy lets in can open it, and anyone who can open tailhome sees its title. It runs only while the app does, so keep that machine awake. See [preview privacy and lifetime](docs/apps.md#previews).
+A preview is private to your tailnet, not to you: anyone your Tailscale policy lets in can open it, and anyone who can open tailhome sees its title. Keep the app running and its machine awake. A reachable Serve listener can keep a preview listed after the app stops; unreachable previews disappear. Ask the agent to remove previews when done. See [preview privacy and lifetime](docs/apps.md#previews).
 
 ## Customize tiles
 
@@ -149,7 +149,7 @@ See [all fields](docs/customize.md) and [`overrides.example.yaml`](overrides.exa
 > [!WARNING]
 > Anyone who can open tailhome sees every listed app and preview, with its name, description and status, on the page and both JSON endpoints, including apps their own access rules block. Restrict access to tailhome accordingly. Hiding an entry hides it for everyone; it does not revoke access to the app.
 
-- Every five minutes by default, tailhome checks port 443 and your preview ports on every device it may reach in your tailnet, other members' laptops and phones included. Apps on port 443 get `GET /`; previews and other ports get a TLS handshake only. When tailhome first finds an endpoint, when one comes back and on a manual refresh, it also reads `/.well-known/tailhome.json`. Requests name `tailhome` in their User-Agent. A nonempty `TAILHOME_DEVICE_TAGS` filter excludes untagged laptops too; see [discovery and device identity](docs/setup.md#optional-list-previews-in-tailhome) before setting it. Use `TAILHOME_DEVICES=off` to stop device discovery.
+- tailhome refreshes every five minutes by default and probes port 443 and your configured preview ports. Large tailnets can need several refreshes. See [device discovery](docs/apps.md#devices) and [preview checks](docs/apps.md#card-refresh-and-checks) for timing, requests and filtering. Use `TAILHOME_DEVICES=off` to stop device discovery.
 - Icons load from `cdn.jsdelivr.net`. To avoid it, set `icon` overrides to your own URLs.
 - Like other Tailscale nodes, tailhome uploads diagnostic logs to Tailscale. Set `TS_NO_LOGS_NO_SUPPORT=true` to stop uploads.
 - Previews on different ports of one device share its cookies. Don't publish an untrusted preview on a device whose other apps keep you logged in.
