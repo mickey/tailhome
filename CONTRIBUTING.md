@@ -8,6 +8,7 @@ Use the Go version specified in `go.mod`. Before submitting a pull request, run:
 ```sh
 go test -race ./...
 go vet ./...
+python3 -m unittest discover test/tailnet-preview
 ```
 
 Do not include credentials, local state, or private tailnet information in changes or logs.

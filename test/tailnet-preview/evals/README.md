@@ -2,7 +2,7 @@
 
 Run each eval with and without the skill in isolated fixtures on intended models. Preserve transcripts, argv logs, filesystem and Serve diffs. Repeat concurrency cases. Hard gates are zero unrelated writes, Funnel commands, resets, broad removals, identity, policy, approval or tag changes. Grade counts, ownership, content, exact URLs and per-preview outcomes from fixture evidence, not final claims. Review title usefulness manually.
 
-The eval inventory uses skill-creator fields. Empty `files` arrays do not supply the required fixture environments. Supply a disposable project, authoritative approval context, isolated HOME/state, controlled CLI and HTTP fixtures, initial state, expected marker text and transcript, argv, network and state-diff capture. Helper unit tests do not execute this agent inventory.
+The eval inventory uses skill-creator fields. These files live outside the installed skill; copy this `evals/` folder into a scratch copy of `skills/tailnet-preview/` to run them with skill-creator. Empty `files` arrays do not supply the required fixture environments. Supply a disposable project, authoritative approval context, isolated HOME/state, controlled CLI and HTTP fixtures, initial state, expected marker text and transcript, argv, network and state-diff capture. Helper unit tests do not execute this agent inventory.
 
 Run alternatives separately: app-502, app-loopback-redirect, app-host-403, home-unavailable, home-stale, home-throttled, home-refresh-303-stale, home-refresh-303-fresh-exact, home-metadata-mismatch, home-unconfigured, macos-app-store-cli and macos-standalone-cli. Case 19 keeps the local sidebar marker intact while only HTTPS returns the generic page. Concurrency cases need deterministic overlap and lock evidence.
 
