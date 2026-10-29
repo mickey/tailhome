@@ -9,9 +9,23 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)">
+<script>
+  // Apply a saved theme before first paint, so the page never flashes the other one.
+  (() => {
+    let t;
+    try { t = localStorage.getItem("tailhome-theme"); } catch {} // storage can be blocked
+    if (t !== "light" && t !== "dark") return;
+    document.documentElement.dataset.theme = t;
+    const c = t === "dark" ? "#151514" : "#f6f6f4";
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", c));
+  })();
+</script>
 <style>
   :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --ok: #1f7a43; --down: #d1453b; --unknown: #a3a39c; --warn: #c88a12; }
   @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; --up: #45b46f; --ok: #5cc985; } }
+  /* A theme picked with the header button overrides the system one, for this browser only. */
+  :root[data-theme="light"] { color-scheme: light; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --ok: #1f7a43; }
+  :root[data-theme="dark"] { color-scheme: dark; --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #8f8f88; --line: #2e2e2b; --up: #45b46f; --ok: #5cc985; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
   main { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; }
@@ -23,6 +37,12 @@
   .meta a, .meta button, .help a, .notices a, .panel .close { text-decoration: underline; text-underline-offset: 2px; }
   .meta form { display: inline; }
   .meta button, .panel .close { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .meta .theme { display: inline-grid; place-items: center; width: 28px; height: 28px; margin-left: 8px; vertical-align: middle; padding: 0; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+  .meta .theme:hover { border-color: var(--muted); }
+  .meta .theme:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .theme svg { width: 16px; height: 16px; }
+  .theme [data-t] { display: none; }
+  .theme[data-theme="auto"] [data-t="auto"], .theme[data-theme="light"] [data-t="light"], .theme[data-theme="dark"] [data-t="dark"] { display: block; }
   /* The add panel: a popover, so it needs no script and closes on Escape or an outside click. */
   .panel { position: fixed; inset: 64px max(20px, calc((100vw - 960px) / 2 + 20px)) auto auto; margin: 0; width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 88px); overflow: auto; padding: 20px 20px 16px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / .14), 0 2px 6px rgb(0 0 0 / .06); }
   @supports not selector(:popover-open) { .panel { display: none; } } /* older browsers would show it for good */
@@ -96,6 +116,7 @@
     main { padding: 24px 14px 72px; }
     .previews, .set, .grid { grid-template-columns: minmax(0, 1fr); }
     .meta button { min-height: 44px; }
+    .meta .theme { width: 36px; height: 36px; min-height: 0; }
     header { align-items: center; gap: 8px; }
     .meta { white-space: nowrap; }
   }
@@ -107,7 +128,7 @@
 <main>
   <header>
     <h1>{{.Title}}</h1>
-    <div class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<form method="post" action="/refresh"><button>refresh</button></form> · <button type="button" popovertarget="add">add</button></div>
+    <div class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<form method="post" action="/refresh"><button>refresh</button></form> · <button type="button" popovertarget="add">add</button><button class="theme" type="button" id="theme" data-theme="auto" aria-label="Theme: auto. Switch to light." title="Theme: auto (switch to light)"><svg data-t="auto" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" stroke="none"/></svg><svg data-t="light" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg><svg data-t="dark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1z"/></svg></button></div>
   </header>
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
   {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}
@@ -187,6 +208,24 @@
   const loaded = Date.now();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && Date.now() - loaded > 5 * 60 * 1000) location.reload();
+  });
+  // Theme button: auto (follow the system), light, dark. Saved in this browser only.
+  const themeButton = document.getElementById("theme");
+  const themeColors = document.querySelectorAll('meta[name="theme-color"]');
+  const showTheme = (t) => {
+    const next = { auto: "light", light: "dark", dark: "auto" }[t];
+    if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+    for (const m of themeColors) m.setAttribute("content", (t === "auto" ? m.media.includes("dark") : t === "dark") ? "#151514" : "#f6f6f4");
+    themeButton.dataset.theme = t;
+    themeButton.setAttribute("aria-label", `Theme: ${t}. Switch to ${next}.`);
+    themeButton.title = `Theme: ${t} (switch to ${next})`;
+  };
+  showTheme(document.documentElement.dataset.theme || "auto");
+  themeButton.addEventListener("click", () => {
+    const t = { auto: "light", light: "dark", dark: "auto" }[themeButton.dataset.theme];
+    showTheme(t);
+    // Blocked or full storage only loses the memory of the choice, not the switch.
+    try { if (t === "auto") localStorage.removeItem("tailhome-theme"); else localStorage.setItem("tailhome-theme", t); } catch {}
   });
   const status = document.getElementById("status");
   const clearManual = () => {

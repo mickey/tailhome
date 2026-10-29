@@ -130,6 +130,8 @@ tailhome checks from its own node, without following redirects. Service checks a
 
 tailhome refreshes every five minutes (`TAILHOME_REFRESH`). Select **refresh** to check now. If discovery fails, the page keeps the last list and shows the error.
 
+The button after **add** switches the theme: auto follows your system, then light, then dark. The choice stays in that browser only, so other people who open the page keep their own.
+
 On a phone, use Add to Home Screen (Safari) or Install app (Chrome). Type `home/go/jellyfin` in the address bar to open a tile by its Service or device name. `/go/devbox` means port 443; `/go/devbox:8443` means that exact port. Names ignore case; an encoded colon or trailing slash works. Hidden or unreachable previews return a 404 page with a home link, without saying they expired.
 
 ## Publish container apps
