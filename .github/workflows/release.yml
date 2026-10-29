@@ -15,8 +15,11 @@ jobs:
           fetch-depth: 0
       # checkout fetches the tag without its message; goreleaser needs it for the release notes
       - run: git fetch --force --tags
-      # Gemini CLI shows this version to users; it must match the tag being released.
-      - run: test "$(jq -r .version gemini-extension.json)" = "${GITHUB_REF_NAME#v}" || { echo "Set gemini-extension.json version to ${GITHUB_REF_NAME#v}"; exit 1; }
+      # Gemini CLI and Claude Code show these versions to users; they must match the tag being released.
+      - run: |
+          for f in gemini-extension.json skills/tailnet-preview/.claude-plugin/plugin.json; do
+            test "$(jq -r .version "$f")" = "${GITHUB_REF_NAME#v}" || { echo "Set the version in $f to ${GITHUB_REF_NAME#v}"; exit 1; }
+          done
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
