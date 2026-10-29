@@ -14,9 +14,9 @@ When you approve a preview, the skill uses your Tailscale CLI to publish the app
 
 It contacts no other server.
 
-A record of each preview it created (ID, machine, port, local app address, card, check settings and timestamps) in `~/.local/state/tailnet-preview/`, or under `$XDG_STATE_HOME`, readable only by your user. Cleanup uses it to remove only what the skill published. Delete the directory to forget all records.
+## What it stores
 
-A record of each preview it created (ID, machine, port, local app address and card) in `~/.local/state/tailnet-preview/`, or under `$XDG_STATE_HOME`, readable only by your user. Cleanup uses it to remove only what the skill published. Delete the directory to forget all records.
+A record of each preview it created (ID, machine, port, local app address, card, check settings and timestamps) in `~/.local/state/tailnet-preview/`, or under `$XDG_STATE_HOME`, readable only by your user. Cleanup uses it to remove only what the skill published. Delete the directory to forget all records.
 
 ## Contact
 

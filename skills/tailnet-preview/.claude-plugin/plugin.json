@@ -10,5 +10,6 @@
   "icon": "./icon.png",
   "documentationUrl": "https://github.com/mickey/tailhome/blob/main/skills/tailnet-preview/README.md",
   "supportUrl": "https://github.com/mickey/tailhome/issues",
+  "privacyPolicyUrl": "https://github.com/mickey/tailhome/blob/main/skills/tailnet-preview/PRIVACY.md",
   "skills": ["./"]
 }
