@@ -1,24 +1,24 @@
 # Privacy
 
-The tailnet-preview skill runs on your machine. It has no server, account, analytics or telemetry, and sends nothing to its author.
+The tailnet-preview skill runs on your machine. It sends nothing to its author and has no analytics or telemetry.
 
 ## What it publishes
 
-When you approve a preview, the skill uses your Tailscale CLI to publish the app at `https://<this machine>.<your tailnet>.ts.net:<port>/`. A small JSON card at `/.well-known/tailhome.json` goes with it. The card holds the title, description, optional icon name, set and version that the agent wrote, plus `"preview": true`. Any device that your Tailscale access rules allow can open both.
+With your approval, the skill publishes your app and a preview card through Tailscale Serve. Your Tailscale access rules control who can open them.
 
-Tailscale carries the traffic, and its own [privacy policy](https://tailscale.com/privacy-policy) applies to the Tailscale service. The first HTTPS request makes Tailscale obtain a certificate for this machine's name. As the [Tailscale HTTPS guide](https://tailscale.com/kb/1153/enabling-https) states, that name then appears in public certificate transparency logs.
+Anyone who can open tailhome sees every listed preview's metadata and link, even if they cannot open the app. Keep secrets out of titles and descriptions.
 
-## What it contacts
+Browsers send cookies to every port on a hostname, including `HttpOnly` cookies. Publish only trusted app code.
 
-- The app on loopback (`127.0.0.1` or `::1`), to check it answers.
-- The published link, through `tailscale nc`, to check it works.
-- Only if you give it a tailhome address: that tailhome. The skill sends `POST /refresh` with an empty body and reads `/api/services.json` and `/api/list.json`. tailhome is a server you run yourself on your tailnet. Anyone who can open it then sees the preview's card and link, even if access rules block them from the app.
+Tailscale carries traffic under its [privacy policy](https://tailscale.com/privacy-policy). HTTPS certificates expose your machine's name in public certificate transparency logs.
 
-It contacts no other server.
+## What it contacts and stores
 
-## What it stores
+The skill contacts your local app, its published HTTPS link and your optional `TAILHOME_URL` to refresh and check the listing.
 
-A record of each preview it created (ID, machine, port, local app address, card, check settings and timestamps) in `~/.local/state/tailnet-preview/`, or `$XDG_STATE_HOME/tailnet-preview/` when that variable is set. Only your user can read it. Cleanup uses it to remove only what the skill published. Remove your previews before deleting the directory: without the records, the skill will not remove the remaining mappings.
+It stores preview ownership records, local app addresses and card metadata in `~/.local/state/tailnet-preview/`, or `$XDG_STATE_HOME/tailnet-preview/` when set. Only your user can read them.
+
+Remove previews before deleting these records. Without them, cleanup leaves the Serve mappings in place.
 
 ## Contact
 

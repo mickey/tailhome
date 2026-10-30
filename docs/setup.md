@@ -1,142 +1,147 @@
 # Set up tailhome
 
-[Back to the README](../README.md). Start with [Docker Compose and prerequisites](../README.md#quick-start), or choose an alternative below.
+[Back to the README](../README.md).
+
+## Before you start
+
+Enable MagicDNS and HTTPS Certificates in [Tailscale DNS settings](https://console.tailscale.com/admin/dns). Viewers need Tailscale; Service viewers need version 1.86 or later, plus `sudo tailscale set --accept-routes` on Linux before 1.94.
+
+App hosts need Tailscale; tailhome's Docker host does not. Keep the state volume to preserve tailhome's identity and [disable key expiry](https://tailscale.com/docs/features/access-control/key-expiry).
+
+## Docker Compose
+
+Save [`compose.yaml`](../compose.yaml). With Compose 2.24.0 or later, run:
+
+```sh
+mkdir -p config
+docker compose up -d
+docker compose logs -f
+```
+
+Open the login link yourself. Whoever opens it chooses tailhome's tailnet and, with OAuth, can see your Service list there; keep it private.
+
+When ready, open `http://home/` from a tailnet device, including the trailing slash. If logs show another name, use that.
+
+Use `.env` for settings and `config/overrides.yaml` for [tile overrides](customize.md#overrides).
 
 ## Docker run
 
-Without a compose file, run `docker run -d --name tailhome --restart unless-stopped -v tailhome-data:/data ghcr.io/mickey/tailhome:latest`, then `docker logs -f tailhome`.
+```sh
+docker run -d --name tailhome --restart unless-stopped -v tailhome-data:/data ghcr.io/mickey/tailhome:latest
+docker logs -f tailhome
+```
 
-Follow the [first-start steps](../README.md#quick-start). For unattended login, set `TS_AUTHKEY` to an [auth key](https://console.tailscale.com/admin/settings/keys). A tagged key avoids key expiry and needs a `tagOwners` entry. Existing nodes keep their identity; the key applies only when joining.
+Follow the [Compose login steps](#docker-compose). For unattended login, set `TS_AUTHKEY` to an [auth key](https://tailscale.com/docs/features/access-control/auth-keys).
 
 ## Binary and Go
 
-Download a binary from [Releases](https://github.com/mickey/tailhome/releases), or install it with Go 1.27.3 or later:
+Download a [release binary](https://github.com/mickey/tailhome/releases), or use Go 1.27.3 or later:
 
 ```sh
 go install github.com/mickey/tailhome@latest
 tailhome
 ```
 
-`go install` puts the binary in `$(go env GOPATH)/bin`; add that directory to your `PATH`.
-
-Follow the [first-start steps](../README.md#quick-start).
-
-## systemd
-
-Run these commands as root from a repository checkout; release archives do not include the systemd unit:
-
-```sh
-install -m 755 tailhome /usr/local/bin/
-install -d /etc/tailhome
-install -m 644 contrib/tailhome.service /etc/systemd/system/
-systemctl enable --now tailhome
-```
-
-The unit runs tailhome as a dynamic user, stores state in `/var/lib/tailhome` and reads `/etc/tailhome/overrides.yaml`. It also reads `/etc/tailhome/env` if present, one `KEY=value` per line, for any setting such as `TS_AUTHKEY` or OAuth credentials. Use `journalctl -u tailhome` to find the login link.
+Add `$(go env GOPATH)/bin` to `PATH` if needed. Follow the [Compose login steps](#docker-compose).
 
 ## Set up OAuth
 
-An optional OAuth client adds Service groups from tags and descriptions from the admin console. It serves the page at `svc:home` instead of the node name `home`. Setup needs admin access:
+OAuth adds Service groups and descriptions, and serves home through `svc:home`. You need tailnet admin access.
 
-1. Allow `tag:tailhome` in your [access controls](https://console.tailscale.com/admin/acls):
-
-   ```jsonc
-   "tagOwners": {
-     "tag:tailhome": ["autogroup:admin"]
-   },
-   "autoApprovers": {
-     "services": { "svc:home": ["tag:tailhome"] }
-   }
-   ```
-
-   Choose who may see the whole catalog before granting access to home. Configure three paths separately: viewer to home, home to app, and viewer to app. OAuth lists every Service; narrowing health-check access does not make Service metadata private. The example below uses a reviewer group and explicit development machines. Replace these examples with your actual users, destinations and approved ports; agents must not apply policy changes for you.
+1. Add to your [access controls](https://console.tailscale.com/admin/acls):
 
    ```jsonc
-   "groups": {
-     "group:reviewers": ["alice@example.com", "bob@example.com"]
-   },
-   "hosts": {
-     "preview-laptop": "100.101.102.103"
-   },
-   "grants": [
-     // Viewers can open the launcher
-     { "src": ["group:reviewers"], "dst": ["svc:home"], "ip": ["tcp:80", "tcp:443"] },
-     // The launcher can check this machine on 443 and the preview range
-     { "src": ["tag:tailhome"], "dst": ["preview-laptop"], "ip": ["tcp:443", "tcp:8443-8452"] },
-     // Viewers can open previews on this machine
-     { "src": ["group:reviewers"], "dst": ["preview-laptop"], "ip": ["tcp:8443-8452"] }
-   ]
+   "tagOwners": { "tag:tailhome": ["autogroup:admin"] },
+   "autoApprovers": { "services": { "svc:home": ["tag:tailhome"] } }
    ```
 
-   The IP is an example untagged laptop, not a request to tag it. Other discovered or checkable destinations need deliberate grants. Port 443 probing and preview-range probing are separate; app access on 443 needs its own viewer grant if required. Review Tailscale's [grants syntax](https://tailscale.com/docs/reference/syntax/grants) and [device tags](https://tailscale.com/docs/features/tags).
+   Grant viewer-to-home, home-to-app and viewer-to-app access separately. Review [catalog visibility](#security-and-network-requests).
 
-2. Rename or remove any device named `home`, including a tailhome node that joined without credentials; the Service needs that name.
+2. Stop tailhome. Rename or remove any device named `home`, then [define a Service](https://tailscale.com/docs/features/tailscale-services) named `home` with `tcp:443` and `tcp:80`, leaving tags empty.
 
-   Define the `home` Service: on the [Services](https://console.tailscale.com/admin/services) page, select **Advertise**, then **Define a Service**; name it `home`, enter `tcp:443` and `tcp:80`, leave tags empty, and select **Add service**.
+3. In [Trust credentials](https://console.tailscale.com/admin/settings/trust-credentials), create an OAuth client with General → Services → Read. Save its ID and secret; the secret appears once.
 
-3. Create an OAuth client. In [Trust credentials](https://console.tailscale.com/admin/settings/trust-credentials), add a credential with custom scopes **General → Services → Read** to list Services and **Keys → Auth Keys → Write** with `tag:tailhome` to join the tailnet.
-
-   Copy the client ID and secret. Tailscale shows the secret only once.
-
-4. Save the credentials in `.env` next to `compose.yaml`, then restart. If you copied `.env.example`, uncomment both lines:
+4. Save these in `.env` next to `compose.yaml`:
 
    ```sh
-   TAILHOME_CLIENT_ID='your-client-id'
-   TAILHOME_CLIENT_SECRET='tskey-client-your-secret'
+   TAILHOME_CLIENT_ID=your-client-id
+   TAILHOME_CLIENT_SECRET=tskey-client-your-secret
    ```
 
-   If tailhome already joined without credentials, it must join again with its tag. Stop it and delete `tailscaled.state` from the state directory (`/data` in Docker).
+   If tailhome previously joined without OAuth, stop it and delete only `tailscaled.state`:
 
-   Remove the old `home` node from the admin console.
+   ```sh
+   docker compose stop
+   docker run --rm --volumes-from "$(docker compose ps --all --quiet tailhome)" busybox rm -f /data/tailscaled.state
+   ```
 
-Without Docker, set the same two variables before starting tailhome.
+   Remove its old node from [Machines](https://console.tailscale.com/admin/machines) if it previously joined.
+
+5. Run `docker compose up -d`, then open the new login link as a tailnet admin; approve the machine if required.
+
+For `docker run`, use `--volumes-from tailhome` when resetting state and recreate with `--env-file .env`; write values without quotes. For binaries, set the same variables and reset `tailscaled.state` in the state directory before restarting.
+
+Optional Keys → Auth Keys → Write for `tag:tailhome` enables automatic enrollment. A leaked secret with this scope can add devices that may serve home; Services: Read alone only reads Services.
 
 ## Preview ports
 
-`TAILHOME_PREVIEW_PORTS` adds HTTPS ports to device discovery. It defaults to empty, so only port 443 is tried. Port 443 is always checked and must not be included here. It can serve [preview cards](apps.md#preview-cards) without this setting; see [when cards are read](apps.md#card-refresh-and-checks).
-
-Use comma-separated decimal ports or inclusive ranges, such as `8443-8452,10000`. Whitespace around each item is allowed. Ports must be 1 through 65535, excluding 443. Duplicates are removed and ports sort numerically. You can add at most 32 distinct ports; a range longer than 32 is rejected before expansion. Empty items, signs, malformed or reversed ranges, out-of-range ports and ranges containing 443 fail startup. An empty value is valid.
-
-Skip this section if you only want permanent apps and Services. Set up each machine where an agent publishes. That may be your laptop or a remote development server, separate from the machine running tailhome.
+`TAILHOME_PREVIEW_PORTS=8443-8452,10000` adds HTTPS discovery ports. Port 443 is always checked; add at most 32 others, between 1 and 65535, excluding 443.
 
 ### Publish a direct preview
 
-Connect Tailscale on the publishing computer and review device. A tailnet administrator must enable MagicDNS and HTTPS certificates in Tailscale DNS settings, and policy must permit the intended viewers to reach the approved HTTPS ports. If Serve returns a consent URL or permission error, complete administrator-approved setup yourself, preserve the error for support and then ask the agent to retry. The skill does not sign in, enable features, change policy or elevate privileges.
+Follow the skill's [requirements](../skills/tailnet-preview/README.md#requirements) and [installation](../skills/tailnet-preview/README.md#install). Have the machine's owner approve publishing ports.
 
-Install the whole skill on the machine hosting the app and check Python and CLI prerequisites in its [installation reference](../skills/tailnet-preview/references/serve.md#installation-and-updates). The machine's owner approves its Serve pool, either in conversation, trusted agent instructions or the agent's operator-provided launch environment. If nothing is configured, the agent asks once proposing 8443-8452 and waits. That suggestion is not approval. Direct chat approval is enough for the task; no persistent instruction file is required. Do not use a checked-in app `.env` as authority. Port 443 needs explicit approval and must be completely free.
-
-For example, ask:
-
-> Publish the app already running at http://127.0.0.1:3000 on this computer. You may use HTTPS ports 8443-8452 for previews; leave existing mappings alone.
+Complete any Serve consent or permission setup yourself, then ask the agent to retry. Agents must not sign in, elevate privileges or change policy.
 
 ### Optional: list previews in tailhome
 
-The tailhome operator separately sets `TAILHOME_PREVIEW_PORTS=8443-8452` on tailhome and restarts it. With Compose, add it under `environment` or uncomment it in `.env`. The setting defaults to empty; 443 is always checked and never belongs in this extra-port list. An optional trusted full HTTPS `TAILHOME_URL` lets the helper confirm listing. Without it, publish and verify only the direct link.
+Set `TAILHOME_PREVIEW_PORTS` in `.env`, then run `docker compose up -d`. Discovery ports do not approve publishing or grant access.
 
-Different machines can reuse the same port numbers. If approved pools differ, configure their union, up to 32 distinct extra ports. This is one shared discovery list, not per-user authorization or a reservation. The machine owner approves publication, the tailnet administrator controls connectivity, and the launcher operator configures discovery.
+Leave `TAILHOME_DEVICE_TAGS` empty for personal laptops. Tagging replaces their user identity and changes their policy.
 
-For dedicated tagged development servers, `TAILHOME_DEVICE_TAGS` can limit discovery. A nonempty filter excludes untagged user devices, including ordinary developer laptops. Do not tag a personal laptop merely to include it: tagging replaces its user identity and changes applicable policy. For user-owned devices, leave this filter empty and limit tailhome's reach with Tailscale policy. Hiding entries changes display, not access.
+## systemd
 
-tailhome has no configuration API and does not install the skill automatically. To keep a permanent app under Apps, use a [`temporary: false` override](troubleshooting.md#a-permanent-device-app-moved-into-previews). Turning off device discovery also stops device previews and card requests. Read about [privacy, checks and cleanup](apps.md#previews) before publishing.
+From a repository checkout with the Linux binary at `./tailhome`, run as root: `install -m 755 tailhome /usr/local/bin/; install -d /etc/tailhome; install -m 644 contrib/tailhome.service /etc/systemd/system/; systemctl enable --now tailhome`.
+Put settings in `/etc/tailhome/env`; state lives in `/var/lib/tailhome`. Find the login link with `journalctl -u tailhome`.
+Put overrides in `/etc/tailhome/overrides.yaml`, readable by the service user.
 
 ## Environment variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `TAILHOME_CLIENT_ID` | unset | [OAuth client ID](setup.md#set-up-oauth). Set both credentials or neither. |
-| `TAILHOME_CLIENT_SECRET` | unset | OAuth client secret |
-| `TAILHOME_STATE_DIR` | `/data` in Docker, else `tsnet-tailhome` in your user config dir | Where tailhome keeps its tailnet identity |
-| `TAILHOME_OVERRIDES` | `/config/overrides.yaml` with the [compose file](../compose.yaml), `/data/overrides.yaml` in the bare image, else `overrides.yaml` | Path to the [overrides file](customize.md#overrides) |
-| `TAILHOME_REFRESH` | `5m` | Refresh interval; any positive Go duration |
-| `TAILHOME_DEVICES` | `on` | Device discovery: `on` or `off` |
-| `TAILHOME_DEVICE_TAGS` | empty | Discover devices matching any listed tag; empty includes untagged devices too. Nonempty excludes untagged laptops. |
-| `TAILHOME_DEVICE_INSECURE_TLS_TAGS` | empty | [Certificate exceptions](apps.md#devices-with-their-own-certificate) for devices matching any listed tag |
-| `TAILHOME_PREVIEW_PORTS` | empty | Extra device HTTPS discovery ports; empty still checks 443 and reads cards there. Does not authorize publication. See [port syntax and limits](#preview-ports). |
-| `TAILHOME_SERVICE` | `svc:home` | Service that serves the page (OAuth only) |
-| `TAILHOME_TAG` | `tag:tailhome` | Node tag (OAuth only) |
-| `TAILHOME_HOSTNAME` | `home`, or `tailhome` with OAuth | Node name in the tailnet |
-| `TAILHOME_TAILNET` | the OAuth client's tailnet | Tailnet to list (OAuth only) |
-| `TS_AUTHKEY` | unset | Auth key for [unattended login](setup.md#docker-run). With OAuth, it must allow `TAILHOME_TAG` (default `tag:tailhome`). |
-| `TS_NO_LOGS_NO_SUPPORT` | unset | See [Security and privacy](../README.md#security-and-privacy) |
+Recreate containers or restart binaries after changes. Separate tags with commas or whitespace.
 
-Separate tags with commas or whitespace; use names such as `tag:nas`. Restart tailhome after changing environment variables. `tailhome -version` prints the version.
+<details>
+<summary>All environment variables</summary>
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TAILHOME_CLIENT_ID` | unset | [OAuth](#set-up-oauth) ID; set both credentials |
+| `TAILHOME_CLIENT_SECRET` | unset | OAuth secret |
+| `TAILHOME_STATE_DIR` | Docker: `/data`; otherwise user config `tsnet-tailhome` | Identity storage |
+| `TAILHOME_OVERRIDES` | Compose: `/config/overrides.yaml`; image: `/data/overrides.yaml`; binary: `overrides.yaml` | [Tile overrides](customize.md#overrides) |
+| `TAILHOME_REFRESH` | `5m` | Refresh interval; positive Go duration |
+| `TAILHOME_DEVICES` | `on` | `off` disables device discovery |
+| `TAILHOME_ICONS` | `on` | `off` disables CDN icons |
+| `TAILHOME_DEVICE_TAGS` | empty | Match any listed tag; empty includes untagged devices |
+| `TAILHOME_DEVICE_INSECURE_TLS_TAGS` | empty | [Certificate exceptions](apps.md#devices-with-their-own-certificate) by tag |
+| `TAILHOME_PREVIEW_PORTS` | empty | [Extra discovery ports](#preview-ports) |
+| `TAILHOME_SERVICE` | `svc:home` | OAuth Service name |
+| `TAILHOME_TAG` | `tag:tailhome` | OAuth node tag |
+| `TAILHOME_HOSTNAME` | `home`; OAuth: `tailhome` | Node name |
+| `TAILHOME_TAILNET` | OAuth client's tailnet | Tailnet to list |
+| `TS_AUTHKEY` | unset | Enrollment key; OAuth requires `TAILHOME_TAG` permission |
+| `TS_NO_LOGS_NO_SUPPORT` | unset | `true` disables Tailscale diagnostic uploads |
+
+</details>
+
+## Security and network requests
+
+[Tailscale policy](https://tailscale.com/docs/features/access-control) controls access; tailhome has no separate login. Everyone who can open it sees the same catalog, including metadata for apps they cannot access.
+
+- Keep OAuth secrets, auth keys, `tailscaled.state` and login links private.
+- Discovery contacts reachable devices, including laptops and phones. Use `TAILHOME_DEVICES=off` to disable it.
+- Icons contact `cdn.jsdelivr.net`, revealing icon names. Set `TAILHOME_ICONS=off` to stop this.
+- Tailscale receives node connections and diagnostic uploads; OAuth contacts its API.
+- HTTPS names appear in public Certificate Transparency logs. Preview cards must not contain secrets or sensitive paths.
+- Cookies are shared across ports, including `HttpOnly` cookies. Do not publish untrusted code on a hostname where apps keep you signed in.
+
+See [preview privacy](apps.md#previews) and [SECURITY.md](../SECURITY.md).
