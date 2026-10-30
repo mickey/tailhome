@@ -52,6 +52,20 @@ func TestWebPermanentTLSStatus(t *testing.T) {
 	}
 }
 
+// Phones have no hover, so a down tile must show why in its text.
+func TestWebDownReasonIsVisible(t *testing.T) {
+	down := Entry{Label: "App", URL: "https://app/", Status: StatusDown, Reason: "HTTP 503"}
+	stale := Entry{Label: "Was down", URL: "https://old/", Status: StatusUp, Reason: "HTTP 503"}
+	other := Entry{Label: "SSH", Copy: "ssh host", Status: StatusDown, Reason: "Device offline"}
+	html := renderWebView(t, View{Groups: []Group{{Name: "Apps", Entries: []Entry{down, stale}}}, Other: []Entry{other}}, false)
+	if strings.Count(html, `<div class="sub reason" title="HTTP 503">HTTP 503</div>`) != 1 {
+		t.Error("down tile reason not shown exactly once")
+	}
+	if !strings.Contains(html, `<div class="sub reason" title="Device offline">Device offline</div>`) {
+		t.Error("down Other row reason not shown")
+	}
+}
+
 func TestWebEmptyStates(t *testing.T) {
 	for _, tc := range []struct {
 		name                           string
@@ -69,7 +83,7 @@ func TestWebEmptyStates(t *testing.T) {
 			for _, c := range []struct {
 				text string
 				want bool
-			}{{"No apps to show", tc.empty}, {"Previews are hidden when an HTTPS connection fails.", tc.hint}, {"id=\"previews-title\"", tc.previews}, {"Refresh failed: offline", tc.v.Error != ""}} {
+			}{{"No apps to show", tc.empty}, {"Previews are hidden when an HTTPS connection fails or their app stops.", tc.hint}, {"id=\"previews-title\"", tc.previews}, {"Refresh failed: offline", tc.v.Error != ""}, {"Badges such as A, B and C mark alternatives, not a ranking.", tc.enabled || tc.previews}, {"ask whoever published it.", tc.enabled || tc.previews}} {
 				if strings.Contains(html, c.text) != c.want {
 					t.Errorf("%q presence != %v", c.text, c.want)
 				}
@@ -78,6 +92,18 @@ func TestWebEmptyStates(t *testing.T) {
 				t.Error("renamed group without previews")
 			}
 		})
+	}
+}
+
+func TestWebHelp(t *testing.T) {
+	html := get(NewHandler(&Catalog{}, "team-home"), "/").Body.String()
+	for _, want := range []string{
+		"team-home/go/&lt;name&gt;",
+		"sudo tailscale set --operator=$USER",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("help missing %q", want)
+		}
 	}
 }
 

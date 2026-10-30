@@ -150,11 +150,11 @@ func NewHandler(c *Catalog, title string) http.Handler {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App not listed</title><style>
 :root { color-scheme: light dark; }
-body { margin: 0; background: #f6f6f4; color: #1c1c1a; font: 15px/1.4 system-ui, sans-serif; }
+body { margin: 0; background: #f6f6f4; color: #1c1c1a; font: 15px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 main { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
 h1 { font-size: 22px; }
 a { color: inherit; text-underline-offset: 2px; }
-a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 @media (prefers-color-scheme: dark) { body { background: #151514; color: #ececea; } }
 @media (max-width: 520px) { main { padding: 24px 14px; } }
 </style><main><h1>App not listed</h1><p>This app or preview is not currently listed.</p><p><a href="/">Back to home</a></p></main></html>`))
