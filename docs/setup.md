@@ -22,7 +22,7 @@ Open the login link yourself. Whoever opens it chooses tailhome's tailnet and, w
 
 When ready, open `http://home/` from a tailnet device, including the trailing slash. If logs show another name, use that.
 
-Use `.env` for settings and `config/overrides.yaml` for [tile overrides](customize.md#overrides).
+Copy the settings template with `cp .env.example .env`. Use `.env` for settings and `config/overrides.yaml` for [tile overrides](customize.md#overrides).
 
 ## Docker run
 

@@ -4,7 +4,7 @@ Stop maintaining dashboard cards. tailhome lists the apps on your [tailnet](http
 
 ![tailhome in light and dark themes, with grouped preview versions, app tiles, health dots and copyable connection details](docs/screenshot.png)
 
-[![Release](https://img.shields.io/github/v/release/mickey/tailhome)](https://github.com/mickey/tailhome/releases) [![CI](https://github.com/mickey/tailhome/actions/workflows/ci.yml/badge.svg)](https://github.com/mickey/tailhome/actions/workflows/ci.yml) · [MIT](LICENSE) · pre-1.0, one maintainer
+[![Release](https://img.shields.io/github/v/release/mickey/tailhome)](https://github.com/mickey/tailhome/releases) [![CI](https://github.com/mickey/tailhome/actions/workflows/ci.yml/badge.svg)](https://github.com/mickey/tailhome/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/github/license/mickey/tailhome)](LICENSE)
 
 | You want | Start here |
 |---|---|
@@ -69,7 +69,7 @@ You need Tailscale on Linux or macOS, MagicDNS, HTTPS Certificates, Python 3.9+ 
 npx skills add mickey/tailhome --skill tailnet-preview -g
 ```
 
-Ask your agent: **Can I see this on my phone?** It asks which HTTPS ports it may use and leaves existing mappings alone.
+Restart your agent so it finds the skill, then ask: **Can I see this on my phone?** It asks which HTTPS ports it may use and leaves existing mappings alone.
 
 Your phone needs Tailscale access. Keep the publishing machine awake and each app instance running. Ask the agent to remove previews when done; they never expire automatically and are never public.
 
@@ -84,6 +84,10 @@ See the [skill guide](skills/tailnet-preview/README.md) for other installs and [
 
 Use [`config/overrides.yaml`](docs/customize.md#overrides) to rename, group, reorder or hide tiles and change icons and links.
 
+## Documentation
+
+[Setup and configuration](docs/setup.md) · [Apps, previews and page controls](docs/apps.md) · [Customization and JSON endpoints](docs/customize.md) · [Troubleshooting](docs/troubleshooting.md) · [Contributing](CONTRIBUTING.md)
+
 ## Security and privacy
 
 Everyone who can open tailhome sees the same catalog, including app and preview names, descriptions, addresses and status, on the page and JSON endpoints. App access rules do not hide this metadata. Hiding tiles does not restrict access.
@@ -94,8 +98,10 @@ tailhome has no analytics or telemetry. Logs can contain the login link: open it
 
 Review [network requests, icon privacy and Tailscale diagnostic logs](docs/setup.md#security-and-network-requests). Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
-## Documentation
+## Is it any good?
 
-[Setup and configuration](docs/setup.md) · [Apps, previews and page controls](docs/apps.md) · [Customization and JSON endpoints](docs/customize.md) · [Troubleshooting](docs/troubleshooting.md) · [Contributing](CONTRIBUTING.md)
+[Yes.](https://news.ycombinator.com/item?id=3067434)
+
+---
 
 Tailscale is a trademark of Tailscale Inc. tailhome is not affiliated with or endorsed by Tailscale.
