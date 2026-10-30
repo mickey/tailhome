@@ -8,7 +8,7 @@ Install the whole reviewed `skills/tailnet-preview/` directory on the app's host
 
 `~/.agents/skills` has documented support in omp, Codex, OpenCode and Gemini CLI. Other clients may use different paths. For Claude Code, add a `~/.claude/skills/tailnet-preview` symlink to the canonical directory. Review an existing installation or link's owner and target before replacing it. Project locations are `.agents/skills/` and `.claude/skills/`. omp also supports `~/.omp/agent/skills/tailnet-preview/` or `.omp/skills/tailnet-preview/`.
 
-The optional installer is `npx skills add mickey/tailhome --skill tailnet-preview -g`. Select clients interactively or with `-a claude-code -a codex`. The installer requires Node. There is no `-a omp` target; selecting `codex` installs into the shared directory without requiring Codex. `-a universal -g` writes `~/.config/agents/skills`, not `~/.agents/skills`.
+The optional installer is `npx skills add mickey/tailhome --skill tailnet-preview -g`. Select clients interactively or with `-a claude-code -a codex`. The installer requires Node. There is no `-a omp` target; `-a pi` and `-a codex` both install into the shared `~/.agents/skills`, which omp reads. `-a universal -g` writes `~/.config/agents/skills`, not `~/.agents/skills`.
 
 Reload or restart the actual client after installation. A shared directory alone does not ensure discovery. Claude Code uses `/tailnet-preview`; Codex supports `$tailnet-preview` or `/skills`; omp supports `/skill:tailnet-preview` when skill commands are enabled. Update the full directory from reviewed or pinned source. Keep one canonical copy with links, and keep private ownership state outside it. Never distribute state with the skill.
 
@@ -28,7 +28,9 @@ See the official [CLI documentation](https://tailscale.com/docs/reference/tailsc
 
 Run `preflight` before asking approval. It reads CLI version, status, optional Linux operator preferences and Serve configuration without creating ownership state or changing Tailscale. Optional `--ports` reports free slots using publication's eligibility rules. Checking which ports are free does not give you permission to publish on them.
 
-Preflight exits nonzero only for a missing CLI, disconnected or logged-out backend, or unavailable HTTPS. Other uncertain checks appear as warnings. Certificate-domain or MagicDNS evidence indicates readiness; it does not test live certificate issuance.
+`machine_ports` lists the ports this machine name already serves through Serve, including your own previews. Services have their own names and are left out. Browsers send this name's cookies to every port, `HttpOnly` ones included, so a preview's server receives the cookies of those apps and of apps that served this name before. Cookies set for the whole tailnet domain reach Services too. Preflight cannot see apps that serve a port themselves, or cookies already stored in a browser. `null` means Serve could not be read.
+
+Preflight exits nonzero only for a missing CLI, disconnected or logged-out backend, or unavailable HTTPS. Other uncertain checks appear as warnings. HTTPS counts as available when Tailscale lists certificate domains (top-level `CertDomains` in `tailscale status --json`), which it does only once HTTPS certificates are enabled. MagicDNS alone is not enough. This does not test live certificate issuance.
 
 On Linux, root or the configured `OperatorUser` likely has Serve write permission. Other users receive `serve_write:"denied_likely"`. Ask the owner to run `sudo tailscale set --operator=$USER` once; never run it yourself. If preferences are unreadable or the CLI comes from a macOS GUI variant, the helper reports `unknown`; this does not confirm write permission. Include these and other blockers in the single approval message. Access-denied Serve errors give the same fix; the helper never elevates itself.
 
@@ -77,7 +79,7 @@ Keep workspace directories and internal review or iteration labels out of titles
 
 ## Verification and home confirmation
 
-Choose `--route`, a successful 2xx `--expected-status` and identifying `--expect-text` for the intended screen. Probes read at most the first 1 MiB of app responses. Put identifying text within that prefix; otherwise large or streaming pages may pass by status alone. Card probes read at most 4097 bytes to enforce the 4096-byte limit. Requests follow no redirects and use normal certificate verification.
+Choose `--route`, a successful 2xx `--expected-status` and identifying `--expect-text` for the intended screen. Probes read at most the first 1 MiB of app responses, so put identifying text within it; text beyond it counts as missing. Without `--expect-text`, the status code alone decides. Probes never run JavaScript, so they cannot check text added only by JavaScript. Card probes read at most 4097 bytes to enforce the 4096-byte limit. Requests follow no redirects and use normal certificate verification.
 
 For exact Self or Peer DNS names and service DNS names in `ExtraRecords`, the helper uses one cached `tailscale status --json` snapshot. It sends HTTP/1.1 through the chosen CLI's `tailscale nc`. TLS uses the URL FQDN for SNI and certificate hostname verification. This supports TUN and userspace networking without OS MagicDNS resolution. Every request has an overall deadline and terminates and reaps its transport subprocess. Other hosts use normal urllib transport.
 
@@ -109,6 +111,8 @@ Approved pools accept comma-separated decimal ports/ranges, with at most 32 dist
 
 Plain `list` requires neither `--set` nor a remote catalog. Every `previews[]` entry keeps all ownership-record fields, including raw recovery `card`, and adds top-level `title`, `description`, `set` and `version` decoded from that card. Missing optional metadata is `null`. Malformed cards produce warnings without invented metadata or discarded records. Membership comes from local records, not the catalog.
 
+Each entry also has `app`, from one request to the recorded local address and route with a 3-second timeout. It is `ok` when the response matches the recorded status and text, `stopped` when nothing answers, or `different` when something else answers. It is `null` when the app was too slow to answer, which can happen while a dev server recompiles, when the recorded address or route is unusable, and for records that were never fully published. A preview mapping outlives its app, so a different app may now be reachable at the old preview link.
+
 `list --set NAME` validates and trims the selector, then matches the recorded card's exact case-sensitive set. Entries retain the same raw and derived fields as plain `list`. Unreadable JSON or malformed cards are skipped with a warning on stderr and retained for recovery.
 
 `cleanup --id ID` and `cleanup --set NAME` are mutually exclusive. Set cleanup snapshots local selections under the lock, checks current node identity/FQDN and applies single-ID mount checks. Report every selected ID's removal outcome and warnings, plus the aggregate selected count. Empty selection is an explicit no-op. Conflicts return nonzero while independent members continue. `--dry-run` prints per-ID commands without removal.
@@ -135,12 +139,14 @@ Match the symptom before making changes:
 
 | Symptom | Check or owner action |
 | --- | --- |
-| `serve config denied` | The account may lack operator permission. Ask the owner to run `sudo tailscale set --operator=$USER` once. |
+| `serve config denied` | The account may lack operator permission. On Linux, ask the owner to run `sudo tailscale set --operator=$USER` once. On macOS with the open source `tailscaled`, only an account outside the `admin` group needs this. |
 | Slow first HTTPS check or certificate failure | Issuance may still be running. The helper waits up to 90 seconds; retry afterward. Check Python CA trust. |
 | Phone or laptop cannot find the name | Check its Tailscale connection and MagicDNS use. |
 | Browser timeout | Ask an administrator to grant approved device access to this machine and port. |
-| 502 or wrong app | Check whether the upstream stopped or moved; Serve mappings outlive apps. |
+| 502 or wrong app | Check whether the upstream stopped or moved; Serve mappings outlive apps. Plain `list` reports `app` for each preview. |
+| Dev server rejects the preview host with 403 or "Blocked request" | Add the exact preview hostname to the framework's allowlist, such as Vite [`server.allowedHosts`](https://vite.dev/config/server-options.html#server-allowedhosts) or Next.js [`allowedDevOrigins`](https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins). Keep host validation on. |
 | Direct link works, but `home/` omits it | Check operator-configured `TAILHOME_PREVIEW_PORTS` and refresh confirmation. |
+| `Waiting for another tailnet-preview command on this account to finish...` on stderr | Another helper command (publish, list, status, check or cleanup) from this OS account holds the lock. Let it finish; do not delete the lock file. |
 
 Fix exact-FQDN allowlists and HMR through supported project settings. Keep host validation and certificate verification so a wrong host or untrusted endpoint cannot appear healthy.
 

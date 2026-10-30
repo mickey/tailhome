@@ -19,7 +19,9 @@ Before asking permission, run:
 python3 /absolute/skill/scripts/tailnet_preview.py preflight --ports 8443-8452
 ```
 
-Inspect running apps without changing them. Read the launch recipe only if startup is needed. Use Tailscale's `Self.HostName`, or the first label of `Self.DNSName`, for the machine name. Do not use the OS hostname. Preflight reports Python, CLI, connection, HTTPS readiness, likely write permission and eligible free ports. Checking which ports are free does not give you permission to publish on them. For missing prerequisites or CLI discovery, read [installation and updates](references/serve.md#installation-and-updates).
+Inspect running apps without changing them. Read the launch recipe only if startup is needed. Use Tailscale's `Self.HostName`, or the first label of `Self.DNSName`, for the machine name. Do not use the OS hostname. Preflight reports Python, CLI, connection, HTTPS readiness, likely write permission, ports already served on the machine name (`machine_ports`) and eligible free ports. Checking which ports are free does not give you permission to publish on them. For missing prerequisites or CLI discovery, read [installation and updates](references/serve.md#installation-and-updates).
+
+Also run `list` for previews this account published. Records from other agents on this account appear too. Each entry's `app` is `ok` if the local app still matches, `stopped` if nothing answers, or `different` if the response changed. A different app may have taken the port. Tell the user about every `stopped` or `different` preview by ID. Offer removal only for IDs from this task or IDs the user names, and remove only with their agreement.
 
 ## 2. Ask once
 
@@ -29,6 +31,10 @@ When approval is missing, ask after inspection:
 
 > May I publish a private Tailscale preview from <Tailscale machine name> using an unused HTTPS port in 8443-8452? The Serve mapping stays until removed; the app must stay running.
 
+For code the user wrote or chose, that question is enough. Add one sentence when the preview runs code they did not write or choose, such as an outside contributor's branch, or when preflight `machine_ports` lists ports that are not their own previews or is `null` because Serve could not be read:
+
+> Previews share browser cookies with other apps on <Tailscale machine name>, so code you don't trust could read your logins there. Publish anyway?
+
 Use "this machine" if its name is unavailable. If user-only actions remain, send one numbered message. Ask for any missing port approval or app startup permission. List every blocker, all owner-side fixes and reviewer access actions so the user can answer once. Give exact commands or pages; never request secrets.
 
 Start or publish only after approval and prerequisite resolution. If user-only actions remain, wait for their reply. Stay within the approved host, pool and task. Report missing prerequisites for the operator to fix. Do not install software, sign in, elevate privileges, change tailnet settings or identity, or run `sudo`. For likely operator denial, ask the owner to run `sudo tailscale set --operator=$USER` once.
@@ -37,7 +43,7 @@ Start or publish only after approval and prerequisite resolution. If user-only a
 
 Reuse the intended running app. Otherwise, start its existing development command with permission. HTTPS-port approval does not authorize startup. Get separate permission for dependency installation, migrations and unrelated services. For a static directory without a startup command, see [app startup](references/serve.md#app-startup).
 
-Bind to literal loopback. Run the app in a persistent session managed by your agent client so it keeps running after your response. Serve `--bg` keeps the mapping active; it does not keep the app running. Check a lightweight route that identifies the intended review screen. Keep admin controls, debug endpoints and private data out of the preview because anyone allowed by Tailscale policy may reach them. Adjust exact-host allowlists or HMR through supported settings and retain host validation. Ports separate origins but share host-scoped cookies, so use only trusted review apps on a hostname carrying valuable cookies.
+Bind to literal loopback. Run the app in a persistent session managed by your agent client so it keeps running after your response. Serve `--bg` keeps the mapping active; it does not keep the app running. Check a lightweight route that identifies the intended review screen. Keep admin controls, debug endpoints and private data out of the preview because anyone allowed by Tailscale policy may reach them. Adjust exact-host allowlists or HMR through supported settings and retain host validation.
 
 Default to one preview. Honor a requested count; choose 2-5 for an open-ended comparison. Exceed five only on request and within approved free capacity. Each version needs a stable independent app instance, upstream, unique ID, HTTPS port, card and verified URL. Use separate worktrees/checkouts or supported per-instance settings with different loopback ports. Branch names alone do not isolate runtimes. Switching one shared tree must not change every preview. Keep earlier versions and authorized sessions intact.
 
@@ -62,7 +68,7 @@ Publish and verify each version separately. Use returned URLs, never predicted p
 
 ## 5. Verify and hand off
 
-Supply the intended `--route`, expected 2xx `--expected-status` and identifying `--expect-text`. A login page or unrelated 200 is insufficient. The helper checks loopback content, unchanged private mounts, the same-origin card and the exact HTTPS route with certificate verification. Inspect redirects only within the intended HTTPS origin and explicitly verify the target.
+Supply the intended `--route`, expected 2xx `--expected-status` and identifying `--expect-text`. A login page or unrelated 200 is insufficient. The helper checks loopback content, unchanged private mounts, the same-origin card and the exact HTTPS route with certificate verification. It reads only what the server sends: it does not run JavaScript or see the rendered screen. For apps that draw their screen in the browser, pick text the server response already contains, such as the page title, and treat it as proof of the app's identity only. Inspect redirects only within the intended HTTPS origin and explicitly verify the target.
 
 Immediately before handoff, run `status --id <id>` for every preview. Run home-backed checks sequentially; listing confirmation can take tens of seconds each. Read [verification and home confirmation](references/serve.md#verification-and-home-confirmation) for failed probe, certificate or listing checks, required diagnostic fields and listing semantics. Match the reported symptom before changing anything; consult [troubleshooting boundaries](references/serve.md#troubleshooting-boundaries).
 
@@ -70,13 +76,15 @@ Report each version separately. A failed required app, card or private-mapping c
 
 Report `published`, `app_verified`, `card_verified` and `listed` independently. `listed:null` means no home was configured; finish with direct links. `listed:false` means the home listing was not confirmed; it does not prove the app is inaccessible. If direct verification succeeds with `listed:false`, say "Published; home listing not confirmed."
 
-Return one line per preview: title/badge, actual clickable HTTPS URL, and difference or inspection task. Include the configured home link when relevant. Use helper URLs, never catalog labels. Claim phone access only after testing it. The TLS ring shown in tailhome does not prove that the app works or that a phone can open it.
+Return one line per preview: title/badge, actual clickable HTTPS URL, and difference or inspection task. Include the configured home link when relevant. Use helper URLs, never catalog labels. Say what was checked: "server response checked" by default. Say "screen checked" only after opening the exact HTTPS URL in a browser tool and seeing the intended screen. Claim phone access only after testing it. The TLS ring shown in tailhome does not prove that the app works or that a phone can open it.
 
 Leave successful requested previews and authorized app sessions running. There is no automatic expiry or keepalive. Ask reviewers to connect Tailscale before opening links and use an account approved to access the publishing machine and each preview's HTTPS port. Keep the host awake, connected and running the app. Host-side checks cannot prove reviewer connectivity. For outside-tailnet reviewers, consult [host, approval and direct links](references/serve.md#host-approval-and-direct-links).
 
 ## 6. Clean up on request
 
-Inspect local records with `list` or `list --set 'Product heroes'`. Set matching is exact, trimmed and case-sensitive. Plain `list` needs no selector or remote catalog. Use `cleanup --id landing-hero` for one requested preview, or `cleanup --set 'Product heroes'` only for an explicitly requested whole comparison. Add `--dry-run` to inspect per-ID removals first.
+Inspect local records with `list` or `list --set 'Product heroes'`. Set matching is exact, trimmed and case-sensitive. Plain `list` needs no selector or remote catalog; it only checks each app at its local address. Use `cleanup --id landing-hero` for one requested preview, or `cleanup --set 'Product heroes'` only for an explicitly requested whole comparison. Add `--dry-run` to inspect per-ID removals first.
+
+`cleanup --set` selects every record in that set on this account, including other agents' previews. Prefer `--id` until everyone is done.
 
 Select only local ownership records. Recheck recorded node, FQDN and mounts; remove only unchanged owned card and root paths. Preserve foreign paths, changed mounts and independent sets. Report every selected ID's removal outcome and warnings, plus the aggregate selected count. Retain conflicts for recovery. A catalog or set label grants no deletion authority. Without a local record, delete nothing.
 

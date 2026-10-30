@@ -1,4 +1,5 @@
 import contextlib
+import email.message
 import importlib.util
 import io
 import json
@@ -18,6 +19,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / 'skills/tailnet-preview/scripts/t
 spec = importlib.util.spec_from_file_location('tailnet_preview', SCRIPT)
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
+REAL_REQUEST = helper.request  # setUp replaces helper.request with a fake network
 
 FAKE = r'''#!/usr/bin/env python3
 import json, os, pathlib, select, socket, sys, time
@@ -26,7 +28,7 @@ args = sys.argv[1:]
 with (root/'argv').open('a') as f: f.write(json.dumps(args, ensure_ascii=False)+'\n')
 config = json.loads((root/'config').read_text())
 if args == ['status', '--json']:
-    status = {'BackendState':'Running','CurrentTailnet':{'MagicDNSSuffix':'example.ts.net'},'Self':{'ID':'n123','DNSName':'dev.example.ts.net.','TailscaleIPs':['fd7a:115c:a1e0::1','100.64.0.1']},'Peer':{'n456':{'DNSName':'home.example.ts.net.','TailscaleIPs':['fd7a:115c:a1e0::2','100.64.0.2']}}}
+    status = {'BackendState':'Running','CertDomains':['dev.example.ts.net'],'CurrentTailnet':{'MagicDNSSuffix':'example.ts.net'},'Self':{'ID':'n123','DNSName':'dev.example.ts.net.','TailscaleIPs':['fd7a:115c:a1e0::1','100.64.0.1']},'Peer':{'n456':{'DNSName':'home.example.ts.net.','TailscaleIPs':['fd7a:115c:a1e0::2','100.64.0.2']}}}
     print((root/'status').read_text() if (root/'status').exists() else json.dumps(status))
 elif args[:1] == ['nc']:
     (root/'nc-pid').write_text(str(os.getpid()))
@@ -52,6 +54,8 @@ elif args == ['debug','prefs']:
 elif args == ['serve','status','--json']:
     print(json.dumps(config))
 else:
+    if os.environ.get('DENY_SERVE') == 'cli-hint':
+        print("sending serve config: Access denied: serve config denied\n\nUse 'sudo tailscale serve'.\nTo not require root, use 'sudo tailscale set --operator=$USER' once.", file=sys.stderr); sys.exit(1)
     if os.environ.get('DENY_SERVE'):
         print('access denied', file=sys.stderr); sys.exit(1)
     config = config or {}
@@ -130,6 +134,22 @@ class HelperTests(unittest.TestCase):
         entry['label'] = entry.pop('title')
         return entry
 
+    def loopback_only(self, url, **kwargs):
+        # `list` may check each app on its local address, and nothing else.
+        if not url.startswith(('http://127.0.0.1', 'http://[::1]')):
+            raise AssertionError('remote request from list: ' + url)
+        return self.respond(url, **kwargs)
+
+    def test_preflight_lists_ports_on_the_machine_name_only(self):
+        # Previews share cookies with apps on the machine's own name, not with
+        # Services, which have names of their own.
+        self.save_config({'TCP': {'443': {'HTTPS': True}},
+                          'Foreground': {'s1': {'TCP': {'3000': {'HTTPS': True}}}},
+                          'Services': {'svc:blog': {'TCP': {'8080': {'HTTPS': True}}}}})
+        code, out = self.call('preflight')
+        self.assertEqual(code, 0)
+        self.assertEqual(out['machine_ports'], [443, 3000])
+
 
     def test_preflight_operator_permissions_and_read_only_ports(self):
         self.save_config({'TCP': {'8443': {'HTTPS': True}}})
@@ -165,19 +185,32 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(out['serve_write'], expected)
             self.assertIsNone(out['free_ports'])
+            # Serve config is read even without --ports; an empty config lists no ports.
+            self.assertEqual(out['machine_ports'], [])
 
     def test_preflight_hard_blockers(self):
-        for status in [
-                {'BackendState': 'NeedsLogin'},
-                {'BackendState': 'Running', 'Self': {'ID': 'n123', 'DNSName': 'dev.'}}]:
+        # Logged out shows only the login blocker; HTTPS is checked once logged in.
+        for status, expected in [
+                ({'BackendState': 'NeedsLogin'}, 'running and logged in'),
+                ({'BackendState': 'Running', 'Self': {'ID': 'n123', 'DNSName': 'dev.'}}, 'HTTPS Certificates')]:
             (self.root / 'status').write_text(json.dumps(status))
             code, out = self.call('preflight')
             self.assertEqual(code, 1)
-            self.assertTrue(out['blockers'])
+            self.assertEqual(len(out['blockers']), 1)
+            self.assertIn(expected, out['blockers'][0])
         with mock.patch.object(helper.shutil, 'which', return_value=None):
             code, out = self.call('preflight')
         self.assertEqual(code, 1)
         self.assertIsNone(out['cli_path'])
+
+    def test_magicdns_without_certificates_blocks(self):
+        (self.root / 'status').write_text(json.dumps({
+            'BackendState': 'Running', 'CurrentTailnet': {'MagicDNSSuffix': 'example.ts.net'},
+            'Self': {'ID': 'n123', 'DNSName': 'dev.example.ts.net.'}}))
+        code, out = self.call('preflight')
+        self.assertEqual(code, 1)
+        self.assertFalse(out['https_available'])
+        self.assertIn('HTTPS Certificates', ' '.join(out['blockers']))
 
     def test_denied_serve_remediation_without_stale_recovery_claim(self):
         with mock.patch.dict(os.environ, {'DENY_SERVE': '1'}):
@@ -186,6 +219,15 @@ class HelperTests(unittest.TestCase):
         self.assertIn('sudo tailscale set --operator=$USER', out['warnings'][0])
         self.assertFalse(helper.Store().path('a').exists())
         self.assertNotIn('recoverable ownership state', str(helper.PublicationFailure(out)))
+
+    def test_operator_hint_appears_once(self):
+        # Tailscale's own CLI prints the hint on Linux and macOS; older or other
+        # messages get ours instead.
+        for deny in ['cli-hint', '1']:
+            with self.subTest(deny=deny), mock.patch.dict(os.environ, {'DENY_SERVE': deny}):
+                code, out = self.publish()
+                self.assertEqual(code, 1)
+                self.assertEqual(out['warnings'][0].count('tailscale set --operator=$USER'), 1)
 
     def test_other_hosts_use_urllib(self):
         self.network.stop()
@@ -684,18 +726,17 @@ class HelperTests(unittest.TestCase):
         store = helper.Store()
         before = {name: store.path(name).read_bytes() for name in ('a', 'b')}
         with mock.patch.object(helper, 'identity') as identity, \
-                mock.patch.object(helper, 'request') as request:
+                mock.patch.object(helper, 'request', side_effect=self.loopback_only):
             code, out = self.call('list', '--set', '  Landing\u2003')
             self.assertEqual(code, 0)
             record = store.load('a')
             expected = dict(record, title="A · Owner's hero", description='Inspect café',
-                            set='Landing', version='A')
+                            set='Landing', version='A', app='ok')
             self.assertEqual(out, {'previews': [expected]})
             other = dict(store.load('b'), title='Unrelated', description=None,
-                         set='Other', version=None)
+                         set='Other', version=None, app='ok')
             self.assertEqual(self.call('list')[1], {'previews': [expected, other]})
             identity.assert_not_called()
-            request.assert_not_called()
         for name, raw in before.items():
             self.assertEqual(store.path(name).read_bytes(), raw)
 
@@ -722,7 +763,7 @@ class HelperTests(unittest.TestCase):
         store.save(record)
         before = store.path('a').read_bytes()
         with mock.patch.object(helper, 'cli_argv', side_effect=AssertionError('CLI resolution')), \
-                mock.patch.object(helper, 'request', side_effect=AssertionError('remote catalog')):
+                mock.patch.object(helper, 'request', side_effect=self.loopback_only):
             code, out = self.call('list')
         self.assertEqual(code, 0)
         item = out['previews'][0]
@@ -732,6 +773,92 @@ class HelperTests(unittest.TestCase):
             self.assertIsNone(item[key])
         self.assertIn('Malformed recorded card', item['warnings'][0])
         self.assertEqual(store.path('a').read_bytes(), before)
+
+    def test_list_malformed_app_addresses_have_unknown_state(self):
+        self.assertEqual(self.publish()[0], 0)
+        store = helper.Store()
+        original = store.load('a')
+        cases = [
+            ('upstream', 3000), ('upstream', {'port': 3000}),
+            ('upstream', ['http://127.0.0.1:3000']), ('upstream', 'not a URL'),
+            ('upstream', 'http://example.com:3000'),
+            ('route', 1), ('route', None), ('route', '//example.com'),
+            ('route', '/?query'), ('route', '/#fragment'), ('route', '/\n'),
+            ('expect_text', None), ('expect_text', 1), ('expect_text', []),
+            ('expect_text', {'text': 'expected screen'}),
+        ]
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                store.save(dict(original, **{field: value}))
+                with mock.patch.object(helper, 'request') as request:
+                    for extra in ((), ('--set', 'Landing')):
+                        code, out = self.call('list', *extra)
+                        self.assertEqual(code, 0)
+                        self.assertIsNone(out['previews'][0]['app'])
+                    request.assert_not_called()
+
+    def test_list_loads_under_lock_and_probes_after_release(self):
+        self.assertEqual(self.publish()[0], 0)
+        load = helper.Store.load
+        def load_locked(store, preview_id):
+            fd = os.open(store.directory / 'lock', os.O_RDWR)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    helper.fcntl.flock(fd, helper.fcntl.LOCK_EX | helper.fcntl.LOCK_NB)
+            finally:
+                os.close(fd)
+            return load(store, preview_id)
+        def probe_unlocked(url, **kwargs):
+            fd = os.open(helper.Store().directory / 'lock', os.O_RDWR)
+            try:
+                helper.fcntl.flock(fd, helper.fcntl.LOCK_EX | helper.fcntl.LOCK_NB)
+            finally:
+                os.close(fd)
+            return self.respond(url, **kwargs)
+        for extra in ((), ('--set', 'Landing')):
+            with self.subTest(extra=extra), \
+                    mock.patch.object(helper.Store, 'load', load_locked), \
+                    mock.patch.object(helper, 'request', side_effect=probe_unlocked) as request:
+                code, out = self.call('list', *extra)
+                self.assertEqual(code, 0)
+                self.assertEqual(out['previews'][0]['app'], 'ok')
+                request.assert_called_once()
+
+    def test_lock_wait_reports_once_before_blocking(self):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(helper.fcntl, 'flock', side_effect=[BlockingIOError(), None]) as flock, \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = helper.main(['list'])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue()), {'previews': []})
+        self.assertEqual(stderr.getvalue(),
+                         'Waiting for another tailnet-preview command on this account to finish...\n')
+        self.assertEqual(flock.call_args_list, [
+            mock.call(mock.ANY, helper.fcntl.LOCK_EX | helper.fcntl.LOCK_NB),
+            mock.call(mock.ANY, helper.fcntl.LOCK_EX)])
+        self.assertEqual(flock.call_args_list[0].args[0], flock.call_args_list[1].args[0])
+
+    def test_list_reports_whether_each_app_still_answers(self):
+        self.assertEqual(self.publish()[0], 0)
+        @contextlib.contextmanager
+        def raising(error):
+            with mock.patch.object(helper, 'request', REAL_REQUEST), \
+                    mock.patch.object(helper.OPENER, 'open', side_effect=error):
+                yield
+        url = 'http://127.0.0.1:3000/'
+        cases = [
+            (mock.patch.object(helper, 'request', side_effect=self.respond), 'ok'),
+            (raising(helper.urllib.error.URLError(ConnectionRefusedError())), 'stopped'),
+            (mock.patch.object(helper, 'request', return_value=(200, b'some other app')), 'different'),
+            (raising(helper.urllib.error.HTTPError(url, 404, 'Not Found', email.message.Message(), io.BytesIO())), 'different'),
+            (raising(helper.http.client.BadStatusLine('not HTTP')), 'different'),
+            (raising(helper.http.client.HTTPException('invalid HTTP')), 'different'),
+            (raising(helper.urllib.error.URLError(socket.timeout('timed out'))), None),
+            (raising(socket.timeout('timed out')), None),
+        ]
+        for patch, state in cases:
+            with self.subTest(state=state), patch:
+                self.assertEqual(self.call('list')[1]['previews'][0]['app'], state)
 
     def test_failed_verification_preserves_original_diagnostics_when_compensation_fails(self):
         def response(url, **kwargs):

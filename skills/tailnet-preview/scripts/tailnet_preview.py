@@ -24,6 +24,7 @@ import re
 import subprocess
 import shutil
 import select
+import socket
 import ssl
 import tempfile
 import time
@@ -35,6 +36,7 @@ import urllib.request
 CARD_PATH = '/.well-known/tailhome.json'
 TIMEOUT = 8
 MAX_BODY = 1024 * 1024
+APP_CHECK_TIMEOUT = 3  # per preview in `list`, which may check several
 OPERATOR_FIX = 'The owner can run sudo tailscale set --operator=$USER once, then retry.'
 
 
@@ -166,8 +168,10 @@ def run(args):
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise Failure('Cannot run authorized tailscale CLI: ' + str(exc)) from exc
     error = 'tailscale ' + ' '.join(args[:3]) + ' failed: ' + done.stderr.strip()
+    # Recent CLIs already print the operator hint; add it only when they don't.
     if args and args[0] == 'serve' and args[1:2] != ['status'] and re.search(
-            r'access denied|permission denied|not permitted', done.stderr, re.IGNORECASE):
+            r'access denied|permission denied|not permitted', done.stderr, re.IGNORECASE) \
+            and '--operator' not in done.stderr:
         error += ' ' + OPERATOR_FIX
     require(done.returncode == 0, error)
     return done.stdout
@@ -265,7 +269,7 @@ def preflight(ports):
     out = {'python_version': sys.version.split()[0], 'cli_path': None, 'cli_version': None,
            'backend_running': False, 'logged_in': False, 'dns_name': None,
            'machine_name': None, 'https_available': False, 'serve_write': 'unknown',
-           'free_ports': None, 'blockers': [], 'warnings': []}
+           'free_ports': None, 'machine_ports': None, 'blockers': [], 'warnings': []}
     try:
         out['cli_path'] = cli_argv([])[0]
     except Failure as exc:
@@ -285,15 +289,15 @@ def preflight(ports):
         out['dns_name'] = node.get('DNSName') or None
         out['machine_name'] = node.get('HostName') or (
             out['dns_name'].split('.')[0] if out['dns_name'] else None)
-        suffix = (status.get('CurrentTailnet') or {}).get('MagicDNSSuffix')
-        out['https_available'] = bool(node.get('CertDomains') or status.get('CertDomains')
-                                      or (out['dns_name'] and suffix))
+        # Tailscale lists certificate domains only when HTTPS certificates are enabled;
+        # MagicDNS alone does not mean Serve can get a certificate.
+        out['https_available'] = bool(status.get('CertDomains'))
     except Failure as exc:
         out['warnings'].append(str(exc))
     if not out['backend_running'] or not out['logged_in']:
         out['blockers'].append('Tailscale must already be running and logged in.')
-    if not out['https_available']:
-        out['blockers'].append('HTTPS certificates are unavailable; the owner needs to enable HTTPS and MagicDNS for this node.')
+    elif not out['https_available']:
+        out['blockers'].append('HTTPS certificates are not enabled. Ask a tailnet admin to turn on MagicDNS and HTTPS Certificates in the DNS settings of the admin console: https://console.tailscale.com/admin/dns')
     if sys.platform.startswith('linux'):
         if os.geteuid() == 0:
             out['serve_write'] = 'allowed'
@@ -307,14 +311,25 @@ def preflight(ports):
                     out['serve_write_fix'] = OPERATOR_FIX
             except Failure as exc:
                 out['warnings'].append(str(exc))
-    if ports:
-        try:
+    try:
+        config = serve_status()
+        # Ports served on this machine's own name; Services have names of their own.
+        out['machine_ports'] = sorted(machine_ports(config))
+        if ports:
             pool = ports_value(ports)
-            occupied = config_ports(serve_status())
+            occupied = config_ports(config)
             out['free_ports'] = [port for port in pool if port not in occupied]
-        except Failure as exc:
-            out['warnings'].append(str(exc))
+    except Failure as exc:
+        out['warnings'].append(str(exc))
     return out
+
+
+def machine_ports(config):
+    """Ports served on the machine name; browsers send its cookies to all of them."""
+    ports = {port_key(key) for key in (config.get('TCP') or {})}
+    for session in (config.get('Foreground') or {}).values():
+        ports.update(port_key(key) for key in (session.get('TCP') or {}))
+    return ports
 
 
 def mounts(config, record):
@@ -352,7 +367,12 @@ class Store:
         fd = os.open(self.directory / 'lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             os.fchmod(fd, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                # Another helper command holds the lock; say so instead of hanging silently.
+                print('Waiting for another tailnet-preview command on this account to finish...', file=sys.stderr, flush=True)
+                fcntl.flock(fd, fcntl.LOCK_EX)
             yield
         finally:
             os.close(fd)
@@ -381,7 +401,7 @@ class Store:
 
 
 def listed_record(record):
-    """Expose recorded comparison metadata without dropping recovery fields."""
+    """Add card metadata and local app state while preserving recovery fields."""
     item = dict(record)
     metadata = {key: None for key in ('title', 'description', 'set', 'version')}
     try:
@@ -390,6 +410,7 @@ def listed_record(record):
     except (Failure, KeyError, TypeError, UnicodeError) as exc:
         item['warnings'] = list(item.get('warnings', [])) + ['Malformed recorded card: ' + str(exc)]
     item.update(metadata)
+    item['app'] = app_state(record)
     return item
 
 
@@ -531,6 +552,34 @@ def expected_app(url, record):
     require(code == record['expected_status'], 'Unexpected app HTTP status at ' + url)
     if record['expect_text']:
         require(record['expect_text'].encode('utf-8') in body, 'Expected app text missing at ' + url)
+
+
+def app_state(record):
+    """Compare the local app with its recorded status and text, if published."""
+    if record.get('phase') not in ('mounted', 'verified') or not record.get('upstream'):
+        return None
+    try:
+        upstream, route = record['upstream'], record.get('route', '/')
+        text = record.get('expect_text')
+        require(isinstance(text, str), 'Invalid recorded expected app text')
+        require(isinstance(upstream, str) and isinstance(route, str), 'Invalid recorded app address')
+        upstream = upstream_value(upstream)
+        require(route.startswith('/') and not route.startswith('//') and not any(c in route for c in '\r\n?#'),
+                'Route must be an absolute local path without query or fragment')
+    except (Failure, TypeError, ValueError):
+        return None
+    try:
+        code, body = request(upstream + route, prefix=True, timeout=APP_CHECK_TIMEOUT)
+    except Failure as exc:
+        cause = exc.__cause__
+        if isinstance(cause, (urllib.error.HTTPError, http.client.HTTPException)):
+            return 'different'
+        if isinstance(getattr(cause, 'reason', cause), socket.timeout):
+            return None  # slow, for example while a dev server recompiles
+        return 'stopped'
+    if code != record.get('expected_status') or (text and text.encode('utf-8') not in body):
+        return 'different'
+    return 'ok'
 
 
 def external_card(url):
@@ -817,7 +866,7 @@ def build_parser():
     cli_help = "Set TAILSCALE to an executable path when the CLI is not on the agent's PATH. On macOS the helper forces CLI mode with TAILSCALE_BE_CLI=1."
     parser = argparse.ArgumentParser(description=__doc__ + ' ' + cli_help)
     subs = parser.add_subparsers(dest='command', required=True)
-    pre = subs.add_parser('preflight', help='Read-only prerequisite and optional free-port inspection')
+    pre = subs.add_parser('preflight', help='Read-only prerequisite, machine-port and optional free-port inspection')
     pre.add_argument('--ports', default=os.environ.get('TAILNET_PREVIEW_PORTS', ''),
                      help='Optional port pool to inspect; inspection does not approve publication')
     id_help = "Unique ID in this account's local ownership state: 1-64 ASCII letters, digits, hyphens or underscores."
@@ -861,12 +910,10 @@ def main(argv=None):
                 out, record = publish(args, store)
             elif args.command == 'list':
                 if args.set is None:
-                    out = {'previews': [listed_record(store.load(p.stem))
-                                        for p in sorted(store.directory.glob('*.json'))]}
+                    records = [store.load(p.stem) for p in sorted(store.directory.glob('*.json'))]
                 else:
                     name = set_value(args.set)
-                    out = {'previews': [listed_record(record)
-                                        for record in set_records(store, name)]}
+                    records = set_records(store, name)
             elif args.command in ('status', 'check'):
                 record = store.load(args.id)
                 record['attempted_at'] = time.time()
@@ -885,6 +932,8 @@ def main(argv=None):
                 if conflicts:
                     print(json.dumps(out, ensure_ascii=False))
                     return 1
+        if args.command == 'list':
+            out = {'previews': [listed_record(item) for item in records]}
         if record is not None and (failure is None or out['published']):
             # Listing is independent of app health; confirm it whenever the mounts exist.
             home_confirm(args.home, record, out)
