@@ -681,7 +681,8 @@ func TestIconMatching(t *testing.T) {
 	path := writeOverrides(t, "nas:\n  icon: synology\n")
 	icons := map[string]string{}
 	// The list loads in the background; Loaded refreshes once it is in, as main does.
-	catalogIcons := func(fetch func(context.Context) ([]string, error), loads bool) {
+	dark := map[string]string{}
+	catalogIcons := func(fetch func(context.Context) ([]iconFile, error), loads bool) {
 		c := newCatalog(lister, &fakeNet{}, path)
 		loaded := make(chan struct{})
 		c.Icons = &Icons{Fetch: fetch, Loaded: func() { close(loaded) }}
@@ -692,38 +693,83 @@ func TestIconMatching(t *testing.T) {
 		}
 		entries, _ := index(c.View())
 		for name, e := range entries {
-			icons[name] = strings.TrimSuffix(strings.TrimPrefix(e.Icon, iconBase), ".svg")
+			icons[name] = strings.TrimPrefix(e.Icon, iconRoot)
+			dark[name] = strings.TrimPrefix(e.IconDark, iconRoot)
 		}
 	}
 
-	catalogIcons(func(context.Context) ([]string, error) {
-		return []string{"immich", "home-assistant", "metabase", "grafana", "grafana-alt", "go"}, nil
+	catalogIcons(func(context.Context) ([]iconFile, error) {
+		return []iconFile{
+			{Name: "immich", File: "svg/immich.svg"}, {Name: "home-assistant", File: "svg/home-assistant.svg"},
+			{Name: "metabase", File: "png/metabase.png"}, {Name: "grafana", File: "svg/grafana.svg", Dark: "svg/grafana-light.svg"},
+			{Name: "grafana-alt", File: "svg/grafana-alt.svg"}, {Name: "go", File: "svg/go.svg"},
+			{Name: "synology", File: "svg/synology-dark.svg", Dark: "svg/synology.svg"},
+		}, nil
 	}, true)
 	for name, want := range map[string]string{
-		"immich-server": "immich",         // trailing word dropped
-		"homeassistant": "home-assistant", // hyphens ignored
-		"metabase-prod": "metabase",
-		"grafana":       "grafana",
-		"jf-prod":       "",         // no icon: the tile shows its first letter, and nothing is requested
-		"nas":           "synology", // an icon override wins
-		"go-links":      "",         // too short a first word to mean the Go icon
+		"immich-server": "svg/immich.svg",         // trailing word dropped
+		"homeassistant": "svg/home-assistant.svg", // hyphens ignored
+		"metabase-prod": "png/metabase.png",       // PNG when there is no SVG
+		"grafana":       "svg/grafana.svg",
+		"jf-prod":       "",                      // no icon: the tile shows its first letter, and nothing is requested
+		"nas":           "svg/synology-dark.svg", // an icon override wins, with its variants
+		"go-links":      "",                      // too short a first word to mean the Go icon
 	} {
 		if icons[name] != want {
 			t.Errorf("%s: icon %q, want %q", name, icons[name], want)
 		}
 	}
 
+	for name, want := range map[string]string{"grafana": "svg/grafana-light.svg", "nas": "svg/synology.svg", "immich-server": ""} {
+		if dark[name] != want {
+			t.Errorf("%s: dark icon %q, want %q", name, dark[name], want)
+		}
+	}
+
 	// Without the list of icons, names are used as they are.
-	catalogIcons(func(context.Context) ([]string, error) { return nil, errors.New("offline") }, false)
-	if icons["immich-server"] != "immich-server" || icons["jf-prod"] != "jf-prod" {
+	catalogIcons(func(context.Context) ([]iconFile, error) { return nil, errors.New("offline") }, false)
+	if icons["immich-server"] != "svg/immich-server.svg" || icons["jf-prod"] != "svg/jf-prod.svg" {
 		t.Errorf("icons without the list: %v", icons)
+	}
+}
+
+// Each icon comes in its base format. One drawn in two colors matches its
+// light-background variant by name, with the other for dark backgrounds;
+// each variant's own name matches that file. Unsafe names are skipped.
+func TestIconFiles(t *testing.T) {
+	icons, err := iconFiles(strings.NewReader(`{
+		"herdr": {"base": "svg"},
+		"amazon": {"base": "svg", "colors": {"dark": "amazon", "light": "amazon-light"}},
+		"1password": {"base": "svg", "colors": {"dark": "1password-dark", "light": "1password"}},
+		"dawarich": {"base": "png"},
+		"odd": {"base": "webp"},
+		"../evil": {"base": "svg"},
+		"bad-variant": {"base": "svg", "colors": {"dark": "bad-variant", "light": "../x"}},
+		"spotify": {"base": "svg", "colors": {"dark": "spotify-dark", "light": "spotify-light"}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.SortFunc(icons, func(a, b iconFile) int { return strings.Compare(a.Name, b.Name) })
+	want := []iconFile{
+		{Name: "1password", File: "svg/1password-dark.svg", Dark: "svg/1password.svg"},
+		{Name: "1password-dark", File: "svg/1password-dark.svg"},
+		{Name: "amazon", File: "svg/amazon.svg", Dark: "svg/amazon-light.svg"},
+		{Name: "amazon-light", File: "svg/amazon-light.svg"},
+		{Name: "bad-variant", File: "svg/bad-variant.svg"},
+		{Name: "dawarich", File: "png/dawarich.png"},
+		{Name: "herdr", File: "svg/herdr.svg"},
+		{Name: "spotify", File: "svg/spotify.svg"}, // its own icon is in color, unlike its variants
+	}
+	if !slices.Equal(icons, want) {
+		t.Errorf("icons = %+v\nwant %+v", icons, want)
 	}
 }
 
 // A blocked CDN must not hold up discovery or manual refreshes.
 func TestStalledIconListDoesNotDelayRefresh(t *testing.T) {
 	c := newCatalog(&fakeLister{services: []tsapi.Service{{Name: "svc:immich-server"}}}, &fakeNet{}, "")
-	c.Icons = &Icons{Fetch: func(ctx context.Context) ([]string, error) { <-ctx.Done(); return nil, ctx.Err() }}
+	c.Icons = &Icons{Fetch: func(ctx context.Context) ([]iconFile, error) { <-ctx.Done(); return nil, ctx.Err() }}
 	start := time.Now()
 	c.Refresh(t.Context())
 	if elapsed := time.Since(start); elapsed > time.Second || len(c.View().all()) != 1 {

@@ -65,6 +65,7 @@ type Entry struct {
 	Description string   `json:"description,omitempty"`
 	Group       string   `json:"group"`
 	Icon        string   `json:"icon"`
+	IconDark    string   `json:"iconDark,omitempty"` // the icon's variant for dark backgrounds
 	Host        string   `json:"host"`
 	Ports       []string `json:"ports"`
 	URL         string   `json:"url,omitempty"`  // empty for non-web Services
@@ -259,7 +260,9 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 		}
 		e := newEntry(name, c.DNSSuffix, svc, o)
 		if o.Icon == "" && c.Icons != nil {
-			e.Icon = c.Icons.url(name)
+			e.Icon, e.IconDark = c.Icons.url(name)
+		} else {
+			e.Icon, e.IconDark = c.Icons.named(cmp.Or(o.Icon, name))
 		}
 		// A URL detected on an earlier refresh sticks, so a web Service that
 		// stops answering stays a tile marked down instead of moving to Other.
@@ -309,8 +312,13 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 	groups := map[string][]Entry{}
 	currentPermanent := 0
 	for _, e := range entries {
-		if c.NoCDNIcons && onIconCDN(e.Icon) {
-			e.Icon = "" // the tile shows its first letter
+		if c.NoCDNIcons {
+			if onIconCDN(e.Icon) {
+				e.Icon = "" // the tile shows its first letter
+			}
+			if onIconCDN(e.IconDark) {
+				e.IconDark = ""
+			}
 		}
 		if e.Temporary {
 			if e.Status == StatusUp {
@@ -364,7 +372,6 @@ func newEntry(name, suffix string, svc tsapi.Service, o Override) Entry {
 		Label:       cmp.Or(o.Label, svc.DisplayName, titleCase(name)),
 		Description: cmp.Or(o.Description, svc.Comment),
 		Group:       cmp.Or(o.Group, groupFromTags(svc.Tags), "Apps"),
-		Icon:        iconURL(cmp.Or(o.Icon, name)),
 		Host:        name + "." + suffix,
 		Ports:       svc.Ports,
 		Status:      StatusUnknown,

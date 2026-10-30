@@ -52,6 +52,22 @@ func TestWebPermanentTLSStatus(t *testing.T) {
 	}
 }
 
+// An icon drawn in two colors gets both images; CSS shows the one for the theme.
+func TestWebIconVariants(t *testing.T) {
+	two := Entry{Label: "Grafana", URL: "https://g/", Icon: "https://cdn.example/svg/grafana.svg", IconDark: "https://cdn.example/svg/grafana-light.svg"}
+	one := Entry{Label: "Immich", URL: "https://i/", Icon: "https://cdn.example/svg/immich.svg"}
+	html := renderWebView(t, View{Groups: []Group{{Name: "Apps", Entries: []Entry{two, one}}}}, false)
+	for _, want := range []string{
+		`src="https://cdn.example/svg/grafana.svg" alt="" onload="this.classList.add('loaded')" class="on-light"`,
+		`src="https://cdn.example/svg/grafana-light.svg" alt="" onload="this.classList.add('loaded')" class="on-dark"`,
+		`src="https://cdn.example/svg/immich.svg" alt="" onload="this.classList.add('loaded')">`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+}
+
 // Phones have no hover, so a down tile must show why in its text.
 func TestWebDownReasonIsVisible(t *testing.T) {
 	down := Entry{Label: "App", URL: "https://app/", Status: StatusDown, Reason: "HTTP 503"}

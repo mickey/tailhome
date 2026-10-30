@@ -378,12 +378,10 @@ func (c *Catalog) entryFor(check deviceCheck, name, bare string) Entry {
 			e.Set, e.Version = state.card.Set, state.card.Version
 		}
 	}
-	if check.override.Icon != "" {
-		e.Icon = iconURL(check.override.Icon)
-	} else if icon == bare && c.Icons != nil {
-		e.Icon = c.Icons.url(bare)
+	if check.override.Icon == "" && icon == bare && c.Icons != nil {
+		e.Icon, e.IconDark = c.Icons.url(bare)
 	} else {
-		e.Icon = iconURL(icon)
+		e.Icon, e.IconDark = c.Icons.named(cmp.Or(check.override.Icon, icon))
 	}
 	e.Temporary = state.temporary
 	e.Check = "http"

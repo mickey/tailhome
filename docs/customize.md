@@ -111,4 +111,4 @@ Add this widget to Glance's `glance.yml`:
 | `GET /api/list.json` | Flat list in [page order](#page-order), suitable for widgets. |
 | `GET /api/services.json` | Previews, app groups and Other, plus refresh time and errors. |
 
-Entries include `name`, `label`, `description`, `icon`, `url`, `copy` and `status`. Other entries provide `copy` instead of `url`.
+Entries include `name`, `label`, `description`, `icon`, `url`, `copy` and `status`. Icons drawn in two colors also have `iconDark`, the variant for dark backgrounds. Other entries provide `copy` instead of `url`.
