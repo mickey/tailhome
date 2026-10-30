@@ -72,6 +72,10 @@ func run() error {
 	if devicesOn != "on" && devicesOn != "off" {
 		return fmt.Errorf("TAILHOME_DEVICES must be on or off, got %q", devicesOn)
 	}
+	iconsOn := env("TAILHOME_ICONS", "on")
+	if iconsOn != "on" && iconsOn != "off" {
+		return fmt.Errorf("TAILHOME_ICONS must be on or off, got %q", iconsOn)
+	}
 	deviceTags, err := envTags("TAILHOME_DEVICE_TAGS")
 	if err != nil {
 		return err
@@ -199,7 +203,10 @@ func run() error {
 	log.Printf("serving https://%s", fqdn)
 	title, dnsSuffix, _ := strings.Cut(fqdn, ".") // home.tn.ts.net → home, tn.ts.net
 
-	icons := &Icons{Fetch: fetchIconNames}
+	var icons *Icons // nil when off: no icon list download
+	if iconsOn == "on" {
+		icons = &Icons{Fetch: fetchIconNames}
+	}
 	catalog := &Catalog{
 		Services:        services,
 		OverridesPath:   env("TAILHOME_OVERRIDES", "overrides.yaml"),
@@ -209,6 +216,7 @@ func run() error {
 		Local:           !apiMode,
 		Notices:         notices,
 		Icons:           icons,
+		NoCDNIcons:      iconsOn == "off",
 		DeviceTags:      deviceTags,
 		InsecureTLSTags: insecureTLSTags,
 		PreviewPorts:    previewPorts,
@@ -217,7 +225,9 @@ func run() error {
 	if devicesOn == "on" {
 		catalog.Devices = localDevices{lc}
 	}
-	icons.Loaded = func() { catalog.Refresh(ctx) } // show the matched icons now, not at the next refresh
+	if icons != nil {
+		icons.Loaded = func() { catalog.Refresh(ctx) } // show the matched icons now, not at the next refresh
+	}
 	go catalog.Run(ctx, refresh)
 
 	errc := make(chan error, 2)

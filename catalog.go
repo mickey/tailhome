@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/idna"
 	"tailscale.com/client/local"
 	tsapi "tailscale.com/client/tailscale/v2"
 	"tailscale.com/tailcfg"
@@ -135,6 +136,7 @@ type Catalog struct {
 	Local           bool                           // listing from the netmap, without API credentials
 	Notices         func(context.Context) []Notice // setup problems, rechecked on every refresh; may be nil
 	Icons           *Icons                         // matches names to icons; nil uses names as-is
+	NoCDNIcons      bool                           // TAILHOME_ICONS=off: suppress icons hosted on cdn.jsdelivr.net
 	Devices         DeviceLister                   // nil: discovery off
 	DeviceTags      []string                       // TAILHOME_DEVICE_TAGS; empty tries every member
 	InsecureTLSTags []string                       // TAILHOME_DEVICE_INSECURE_TLS_TAGS; members with one skip certificate verification
@@ -307,6 +309,9 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 	groups := map[string][]Entry{}
 	currentPermanent := 0
 	for _, e := range entries {
+		if c.NoCDNIcons && onIconCDN(e.Icon) {
+			e.Icon = "" // the tile shows its first letter
+		}
 		if e.Temporary {
 			if e.Status == StatusUp {
 				view.Previews = append(view.Previews, e)
@@ -481,6 +486,37 @@ func titleCase(s string) string {
 		words[i] = strings.ToUpper(w[:1]) + w[1:]
 	}
 	return strings.Join(words, " ")
+}
+
+var iconIDNA = idna.New(idna.MapForLookup(), idna.StrictDomainName(false), idna.ValidateLabels(false))
+
+// onIconCDN reports whether a browser could fetch icon from cdn.jsdelivr.net.
+// Browsers drop tabs and newlines from URLs and accept many spellings (http:,
+// //, backslashes, upper case, percent escapes, a trailing dot), so look for the host anywhere.
+// With icons off, a false match only costs an icon.
+func onIconCDN(icon string) bool {
+	icon = strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, icon)
+	// Decode each valid escape on its own: browsers decode the host even when
+	// another escape in the URL is malformed. (The loop skips decoded digits.)
+	var b strings.Builder
+	for i := 0; i < len(icon); i++ {
+		if icon[i] == '%' && i+2 < len(icon) {
+			if c, err := strconv.ParseUint(icon[i+1:i+3], 16, 8); err == nil {
+				b.WriteByte(byte(c))
+				i += 2
+				continue
+			}
+		}
+		b.WriteByte(icon[i])
+	}
+	// ToUnicode returns the mapped string even if URL punctuation causes an error.
+	icon, _ = iconIDNA.ToUnicode(b.String())
+	return strings.Contains(strings.ToLower(icon), "cdn.jsdelivr.net")
 }
 
 func iconURL(icon string) string {

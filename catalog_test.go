@@ -731,6 +731,52 @@ func TestStalledIconListDoesNotDelayRefresh(t *testing.T) {
 	}
 }
 
+// With TAILHOME_ICONS=off no icon points at the CDN: default and named icons,
+// and any cdn.jsdelivr.net URL, give way to the first letter; other URLs remain.
+func TestIconsOffKeepsOnlyOwnURLs(t *testing.T) {
+	// Every spelling here reaches the CDN in a browser.
+	cdnIcons := map[string]string{
+		"cdn":           "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/cdn.png",
+		"plain":         "http://cdn.jsdelivr.net/x.svg",
+		"relative":      "//cdn.jsdelivr.net/x.svg",
+		"upper":         "https://CDN.JSDELIVR.NET:443/x.svg",
+		"dot":           "https://cdn.jsdelivr.net./x.svg",
+		"escaped":       "https://cdn%2Ejsdelivr.net/x.svg",
+		"badescape":     "https://cdn%2Ejsdelivr.net/x%zz.svg",
+		"opaque":        "http:cdn.jsdelivr.net/x.svg",
+		"slash":         `/\cdn.jsdelivr.net/x.svg`,
+		"tab":           "https://cdn.jsd\telivr.net/x.svg",
+		"padded":        "  https://cdn.jsdelivr.net/x.svg  ",
+		"escape-tab":    "https://cdn.jsdelivr%2\tEnet/x.svg",
+		"ideographic":   "https://cdn。jsdelivr。net/x.svg",
+		"fullwidth-dot": "https://cdn．jsdelivr．net/x.svg",
+		"halfwidth-dot": "https://cdn｡jsdelivr｡net/x.svg",
+		"fullwidth":     "https://ｃｄｎ.jsdelivr.net/x.svg",
+		"soft-hyphen":   "https://cdn.jsd\u00adelivr.net/x.svg",
+	}
+	services := []tsapi.Service{{Name: "svc:immich"}, {Name: "svc:nas"}, {Name: "svc:cam"}}
+	overrides := map[string]map[string]string{"nas": {"icon": "synology"}, "cam": {"icon": "https://icons.example/cam.png"}}
+	want := map[string]string{"immich": "", "nas": "", "cam": "https://icons.example/cam.png"}
+	for name, icon := range cdnIcons {
+		services = append(services, tsapi.Service{Name: "svc:" + name})
+		overrides[name] = map[string]string{"icon": icon}
+		want[name] = ""
+	}
+	yaml, err := json.Marshal(overrides) // JSON is valid YAML
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newCatalog(&fakeLister{services: services}, &fakeNet{}, writeOverrides(t, string(yaml)))
+	c.NoCDNIcons = true
+	c.Refresh(t.Context())
+	entries, _ := index(c.View())
+	for name, w := range want {
+		if got := entries[name].Icon; got != w {
+			t.Errorf("%s: icon %q, want %q", name, got, w)
+		}
+	}
+}
+
 func TestShortcuts(t *testing.T) {
 	path := writeOverrides(t, `
 grafana:
