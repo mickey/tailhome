@@ -6,7 +6,7 @@ require (
 	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
-	tailscale.com v1.104.2
+	tailscale.com v1.104.4
 	tailscale.com/client/tailscale/v2 v2.12.0
 )
 
