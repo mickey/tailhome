@@ -91,7 +91,7 @@ After publishing or changing a card, select **refresh**. If it is missing, check
 
 - Select **refresh** to update the list. A discovery error leaves the last list visible.
 - Select an Other row to copy connection details; customize these with a `copy` override.
-- Use the button after **help** to switch between system, light and dark themes.
+- Use the button after **help** to switch between light and dark. Until you pick one, the page follows your system.
 - On phones, use Safari's Add to Home Screen or Chrome's Install app.
 - Open `home/go/jellyfin` by name, or `/go/devbox:8443` for a specific device port.
 
