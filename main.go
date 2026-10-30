@@ -98,25 +98,33 @@ func run() error {
 	var api *tsapi.Client
 	if apiMode {
 		tag := env("TAILHOME_TAG", "tag:tailhome")
-		api = &tsapi.Client{
-			Tailnet: os.Getenv("TAILHOME_TAILNET"),
-			Auth: oauthClient{
-				ctx: ctx, id: clientID, secret: clientSecret,
-				scopes:  []string{"services:read", "auth_keys"},
-				timeout: 30 * time.Second,
-			},
+		oauth := func(scopes ...string) *tsapi.Client {
+			return &tsapi.Client{
+				Tailnet: os.Getenv("TAILHOME_TAILNET"),
+				Auth:    oauthClient{ctx: ctx, id: clientID, secret: clientSecret, scopes: scopes, timeout: 30 * time.Second},
+			}
 		}
+		// Listing needs only services:read, so a read-only client works once
+		// the node has joined. auth_keys is requested only to join.
+		api = oauth("services:read")
 		srv.Hostname = env("TAILHOME_HOSTNAME", "tailhome")
 		srv.AdvertiseTags = []string{tag}
 		isEnrolled, err := enrolled(dir)
 		if err != nil {
 			return err
 		}
-		if !isEnrolled && os.Getenv("TS_AUTHKEY") == "" {
-			if srv.AuthKey, err = mintAuthKey(ctx, api, tag, time.Minute); err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
+		if !isEnrolled && os.Getenv("TS_AUTHKEY") == "" && os.Getenv("TS_AUTH_KEY") == "" {
+			// A client with Auth Keys: Write joins by itself. A read-only client
+			// joins through the login link: an admin who opens it applies the tag.
+			key, err := mintAuthKey(ctx, oauth("auth_keys"), tag, time.Minute)
+			switch {
+			case err == nil:
+				srv.AuthKey = key
+			case ctx.Err() != nil:
+				return nil
+			case cannotMintKeys(err):
+				log.Printf("tailhome can't create its own auth key with this OAuth client. Open the login link below as a tailnet admin to join with %s.", tag)
+			default:
 				return fmt.Errorf("joining the tailnet: creating an auth key for %s: %w", tag, err)
 			}
 		}

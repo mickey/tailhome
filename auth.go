@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	tsapi "tailscale.com/client/tailscale/v2"
+	"tailscale.com/ipn"
 )
 
 // oauthClient replaces tsapi.OAuth, whose token fetch uses context.Background()
@@ -53,12 +55,27 @@ func stateDir() (string, error) {
 	return filepath.Join(conf, "tsnet-tailhome"), nil
 }
 
+// enrolled reports whether the state dir holds a logged-in profile. tsnet
+// writes tailscaled.state as soon as it starts, before any login, so a first
+// start that only printed a login link leaves a file with no profile in it.
 func enrolled(dir string) (bool, error) {
-	_, err := os.Stat(filepath.Join(dir, "tailscaled.state"))
+	path := filepath.Join(dir, "tailscaled.state")
+	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
-	return err == nil, err
+	if err != nil {
+		return false, err
+	}
+	if len(b) == 0 {
+		return false, nil // tsnet treats an empty file as missing too
+	}
+	var state map[string]json.RawMessage
+	if err := json.Unmarshal(b, &state); err != nil {
+		return false, fmt.Errorf("reading %s: %w", path, err)
+	}
+	_, ok := state[string(ipn.CurrentProfileStateKey)]
+	return ok, nil
 }
 
 // mintAuthKey creates the one-off key tsnet joins with. Doing it here rather
@@ -77,4 +94,13 @@ func mintAuthKey(ctx context.Context, api *tsapi.Client, tag string, timeout tim
 		return "", err
 	}
 	return key.Key, nil
+}
+
+// cannotMintKeys reports whether the token endpoint refused the auth_keys
+// scope, which is what a read-only OAuth client gets. Other failures, such as
+// a wrong secret, are configuration errors worth stopping for.
+// A client lacking auth_keys scope was observed live receiving 403 from Tailscale's token endpoint.
+func cannotMintKeys(err error) bool {
+	re, ok := errors.AsType[*oauth2.RetrieveError](err)
+	return ok && re.Response != nil && re.Response.StatusCode == http.StatusForbidden
 }
