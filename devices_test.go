@@ -209,8 +209,8 @@ func TestDeviceProberTimeout(t *testing.T) {
 	n := &fakeNet{addrs: map[string]string{"100.64.0.1:443": serveSilent(t)}}
 	p := &DeviceProber{dial: n.dial, timeout: 20 * time.Millisecond}
 	answered, status, reason, _ := p.probe(context.Background(), catalogDevice("node", "app", "100.64.0.1"), false)
-	// The handshake timer and the probe deadline are equal and start microseconds apart; either may fire first.
-	if answered || status != StatusDown || !(strings.Contains(reason, "deadline exceeded") || strings.Contains(reason, "handshake timeout")) {
+	// The handshake timer and probe deadline race; the deadline can also close the connection.
+	if answered || status != StatusDown || !(strings.Contains(reason, "deadline exceeded") || strings.Contains(reason, "handshake timeout") || strings.Contains(reason, "use of closed network connection")) {
 		t.Fatalf("got %v %s %q", answered, status, reason)
 	}
 }
@@ -696,17 +696,24 @@ func TestCatalogDeviceCandidateBudgetStartsAfterAdmitted(t *testing.T) {
 }
 
 // cardServer counts card and root requests; a zero root code rejects root checks.
+// HEAD requests are the preview upstream check and answer app (default 200).
 type cardServer struct {
 	t            *testing.T
 	mu           sync.Mutex
 	body         string
 	code, root   int
+	app, heads   int
 	cards, roots int
 }
 
 func (s *cardServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if r.Method == http.MethodHead {
+		s.heads++
+		w.WriteHeader(cmp.Or(s.app, 200))
+		return
+	}
 	if r.URL.Path != cardPath {
 		s.roots++
 		if s.root == 0 {
@@ -724,6 +731,12 @@ func (s *cardServer) set(body string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.body = body
+}
+
+func (s *cardServer) headCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.heads
 }
 
 func (s *cardServer) counts() (cards, roots int) {
@@ -784,6 +797,26 @@ func TestPreviewProbeLifecycle(t *testing.T) {
 			check(3)
 			if strings.Contains(logs.String(), "devbox listed") || strings.Contains(logs.String(), name+" is down") || strings.Contains(logs.String(), "listing 1 apps") {
 				t.Fatalf("preview lifecycle noise: %s", logs.String())
+			}
+			// Serve answers 502 once the app behind the mapping stops.
+			srv.mu.Lock()
+			srv.app = 502
+			srv.mu.Unlock()
+			c.Refresh(t.Context())
+			if len(c.View().Previews) != 0 {
+				t.Fatalf("preview with stopped app still listed: %+v", c.View().Previews)
+			}
+			// Another app takes the port: its return re-reads the card.
+			srv.mu.Lock()
+			srv.app = 0
+			srv.body = `{"title":"Other app","preview":true}`
+			srv.mu.Unlock()
+			c.Refresh(t.Context())
+			if e := deviceEntry(t, c, name); len(c.View().Previews) != 1 || e.Label != "Other app" || e.Set != "" {
+				t.Fatalf("returned preview kept the old card: %+v", e)
+			}
+			if srv.headCount() == 0 {
+				t.Fatal("preview got no upstream check")
 			}
 			// A valid empty replacement clears metadata and preview classification
 			// on 443, but cannot cancel the configured extra-port policy.
@@ -920,6 +953,7 @@ func TestPreviewUnverifiedCardIsNotImported(t *testing.T) {
 	c.Refresh(t.Context())
 	e := deviceEntry(t, c, "devbox:8443")
 	requests, _ := srv.counts()
+	requests += srv.headCount()
 	if !e.Unverified || !e.Temporary || e.Label != "Devbox :8443" || requests != 0 {
 		t.Fatalf("unverified metadata: %+v, requests=%d", e, requests)
 	}
@@ -951,6 +985,9 @@ func TestPermanentExtraPortHasNoPeriodicHTTP(t *testing.T) {
 	c.Refresh(t.Context())
 	e := deviceEntry(t, c, "devbox:8443")
 	requests, _ := srv.counts()
+	if srv.headCount() != 0 {
+		t.Fatal("permanent extra port got an upstream check")
+	}
 	if e.Temporary || e.Check != "tls" || requests != 1 {
 		t.Fatalf("permanent pool health: %+v requests=%d", e, requests)
 	}
@@ -1045,7 +1082,8 @@ func TestPreviewIPv6ExtraPortIsPinned(t *testing.T) {
 	c, _, n, ca := deviceCatalog(t, d)
 	c.PreviewPorts = []uint16{8443}
 	n.addrs["[fd7a:115c:a1e0::1]:8443"] = serveDeviceTLS(t, ca.leaf(t, d.DNSName, false), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != "devbox.ts.test:8443" || r.TLS.ServerName != d.DNSName || r.URL.Path != cardPath {
+		head := r.Method == http.MethodHead && r.URL.Path == "/"
+		if r.Host != "devbox.ts.test:8443" || r.TLS.ServerName != d.DNSName || (r.URL.Path != cardPath && !head) {
 			t.Errorf("unexpected IPv6 endpoint request: host=%s SNI=%s path=%s", r.Host, r.TLS.ServerName, r.URL.Path)
 		}
 		fmt.Fprint(w, `{"title":"IPv6 preview"}`)
@@ -1099,5 +1137,22 @@ func TestPreviewHintDisabledWithoutDeviceDiscovery(t *testing.T) {
 	c.Refresh(t.Context())
 	if c.View().PreviewEnabled {
 		t.Fatal("preview hint enabled when discovery is off")
+	}
+}
+
+// TAILHOME_ICONS=off must also clear device and preview-card icons, which are
+// built separately from Service icons.
+func TestIconsOffClearsDeviceAndCardIcons(t *testing.T) {
+	d := catalogDevice("node", "devbox", "100.64.0.1")
+	c, _, n, ca := deviceCatalog(t, d)
+	c.NoCDNIcons = true
+	c.PreviewPorts = []uint16{8443}
+	n.addrs["100.64.0.1:443"] = ca.serve(t, d.DNSName, 200)
+	serveCard(t, n, ca, d, 8443, `{"title":"Card","icon":"shopify","preview":true}`, 200, 0)
+	c.Refresh(t.Context())
+	for _, name := range []string{"devbox", "devbox:8443"} {
+		if e := deviceEntry(t, c, name); e.Icon != "" {
+			t.Errorf("%s: icon %q, want first letter", name, e.Icon)
+		}
 	}
 }

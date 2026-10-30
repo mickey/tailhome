@@ -185,9 +185,32 @@ func (p *DeviceProber) check(parent context.Context, d *deviceCheck, manual bool
 	s.temporary = temporary(d.port, s, d.override)
 	if d.tlsOnly() {
 		d.answered, d.status = true, StatusUp
+		if s.temporary && !d.unverified && upstreamGone(ctx, client, base) {
+			// Serve keeps the listener after the app stops; hide the preview then,
+			// and treat its return as a recovery so a new app never inherits the card.
+			d.status, d.reason = StatusDown, "the app behind this preview does not answer (HTTP 502)"
+			s.tlsUp = false
+		}
 		return
 	}
 	d.answered, d.status, d.reason = httpCheck(ctx, client, base)
+}
+
+// upstreamGone reports whether Tailscale Serve answers 502 Bad Gateway, which
+// it does when the local app behind a mapping no longer answers. Any other
+// answer, or an error, keeps the preview listed.
+func upstreamGone(ctx context.Context, client *http.Client, url string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("User-Agent", userAgent())
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusBadGateway
 }
 
 func fetchCard(ctx context.Context, client *http.Client, url string) (*previewCard, string) {
