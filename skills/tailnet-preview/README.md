@@ -67,6 +67,17 @@ Enable [preview discovery](../../docs/setup.md#optional-list-previews-in-tailhom
   <img alt="An agent publishes three landing-page versions; tailhome on a phone groups them as Landing redesign with badges A, B and C" src="../../docs/agents.png">
 </picture>
 
+## Make previews the default
+
+The agent publishes when you ask. If you work on a remote machine or compare versions often, you can make it the default by adding this to your user-level `AGENTS.md` or `CLAUDE.md`, with your own ports:
+
+```text
+When you start something for me to look at (an app, a page, several versions),
+publish it with the tailnet-preview skill on HTTPS ports 8443-8452 and give me
+the link. Remove it when I say I'm done.
+```
+
+This counts as your approval of those ports, so add it only where you mean it.
 
 ## Privacy and cleanup
 

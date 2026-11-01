@@ -24,6 +24,10 @@
     "should_trigger": true
   },
   {
+    "query": "I'm working over SSH on my dev VPS. Start the app and let me look at the new header.",
+    "should_trigger": true
+  },
+  {
     "query": "Check checkout-a, the preview you published yesterday. The card loads but I think /checkout is serving the generic landing screen. Verify that exact HTTPS route and tell me whether its home listing is current.",
     "should_trigger": true
   },
@@ -77,6 +81,10 @@
   },
   {
     "query": "I have a manually managed private Serve service on 443, not one created by this skill. Review its reverse-proxy configuration and explain the 502 without adopting it, adding cards or changing its ownership.",
+    "should_trigger": false
+  },
+  {
+    "query": "Start the dev server so I can check the new header in my browser here on this laptop.",
     "should_trigger": false
   }
 ]

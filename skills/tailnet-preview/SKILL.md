@@ -1,6 +1,6 @@
 ---
 name: tailnet-preview
-description: 'Publish, verify, list or remove private Tailscale Serve dev previews, with optional tailhome cards. Use for "can I see this on my phone?", localhost or worktree reviews on another device, version comparisons, exact URL or home-listing checks, and owned cleanup. Supports Linux/macOS and authorized remote hosts. Use the owning tool for Tailpreview or Portless previews. Excludes production, public tunnels/Funnel, Tailscale/tailhome installation, and policy or identity changes.'
+description: 'Publish, verify, list or remove private Tailscale Serve dev previews, with optional tailhome cards. Use for "can I see this on my phone?", localhost or worktree reviews on another device, anything started for the user to look at on a dev host they reach over SSH, version comparisons, exact URL or home-listing checks, and owned cleanup. Supports Linux/macOS and authorized remote hosts. Use the owning tool for Tailpreview or Portless previews. Excludes production, public tunnels/Funnel, Tailscale/tailhome installation, and policy or identity changes.'
 ---
 
 # Tailnet preview, by tailhome
