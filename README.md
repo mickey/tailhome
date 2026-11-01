@@ -2,7 +2,7 @@
 
 Stop maintaining dashboard cards. tailhome lists the apps on your [tailnet](https://tailscale.com/docs/concepts/tailnet), and the previews your coding agents publish.
 
-![tailhome in light and dark themes, with grouped preview versions, app tiles, health dots and copyable connection details](docs/screenshot.png)
+<img src="docs/demo.gif" width="880" alt="Simulated demo: on a NAS, tailscale serve publishes Jellyfin and its tile appears on home/ on a phone. Then a coding agent asked &quot;Can I see these three versions on my phone?&quot; publishes versions A, B and C, home/ lists them as Landing redesign, version B opens, and the previews are removed.">
 
 [![Release](https://img.shields.io/github/v/release/mickey/tailhome)](https://github.com/mickey/tailhome/releases) [![CI](https://github.com/mickey/tailhome/actions/workflows/ci.yml/badge.svg)](https://github.com/mickey/tailhome/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/github/license/mickey/tailhome)](LICENSE)
 
@@ -43,6 +43,8 @@ See [setup](docs/setup.md) for Compose, binaries, systemd and host requirements.
 - No published host ports, Docker socket or reverse proxy to configure.
 - Apps appear automatically with health dots. Copy SSH and Postgres connection details from Other.
 - Install the page on your phone's home screen, or open an app with `home/go/<name>`.
+
+![tailhome in light and dark themes, with grouped preview versions, app tiles, health dots and copyable connection details](docs/screenshot.png)
 
 For manual cards and widgets, use Homepage, Homarr, Dashy or Heimdall. You can [feed Homepage or Glance your app list](docs/customize.md#homepage-and-glance).
 

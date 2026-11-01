@@ -12,6 +12,8 @@
 | Invalid `TAILHOME_PREVIEW_PORTS` | Fix the [port syntax](setup.md#preview-ports), then run `docker compose up -d` (or restart the binary). |
 | `home/` won't load | Use the logged address without OAuth; with OAuth, define `svc:home` and approve its host ([setup](setup.md#set-up-oauth)). |
 | `home/` won't resolve | Check [MagicDNS](https://tailscale.com/docs/features/magicdns) and [client requirements](setup.md#before-you-start). |
+| `home/` refuses to connect ("Bad access") while Tailscale is up | Another VPN is probably active. Turn it off or exclude Tailscale from it. |
+| `home/` works with `curl` but not in the browser | The browser's secure DNS may use a fixed provider. Set it to your current provider or turn it off. |
 | `https://home/` won't connect | Use `http://home/`; for the full `.ts.net` address, check [HTTPS setup](https://tailscale.com/docs/how-to/set-up-https-certificates). |
 | First HTTPS request times out | Retry in a minute while Tailscale issues the certificate. |
 | `this node joined without a tag` | Reset tailhome's state using [OAuth setup](setup.md#set-up-oauth). |
