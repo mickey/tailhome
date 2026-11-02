@@ -107,7 +107,7 @@ Status reflects tailhome's access, not yours:
 
 ## Publish container apps
 
-- [DockTail](https://github.com/marvinvr/docktail) publishes Tailscale Services.
+- [DockTail](https://github.com/marvinvr/docktail) publishes Tailscale Services. Its labels can set [tile descriptions and groups](integrations.md#docktail).
 - [TSDProxy v2](https://github.com/almeidapaulopt/tsdproxy), [tsbridge](https://github.com/jtdowney/tsbridge) and [ScaleTail](https://github.com/tailscale-dev/ScaleTail) give each app its own device.
 - Use `group` overrides to separate containers sharing tags, and `url` overrides for paths other than `/`.
 - For stopped DockTail containers, set `DELETE_UNUSED_SERVICES=true` in DockTail or hide their tiles with `hidden: true`.

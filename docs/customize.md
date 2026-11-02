@@ -56,55 +56,9 @@ Previews come first, app groups follow alphabetically, and Other comes last.
 
 Tile links and `/go/` accept `http`, `https`, `mailto`, `vnc`, `ssh`, `rdp`, `smb`, `ftp`, `sftp` and `telnet` URLs. Other schemes do not open.
 
-## Homepage and Glance
-
-Your dashboard server must be on the tailnet and allowed to reach tailhome.
-Replace `home.<tailnet>.ts.net` with the address in tailhome's logs.
-
-### Homepage
-
-Add this widget to Homepage's `services.yaml`:
-
-```yaml
-- Tailnet:
-    - Tailnet Apps:
-        icon: tailscale.svg
-        href: https://home.<tailnet>.ts.net/
-        widget:
-          type: customapi
-          url: https://home.<tailnet>.ts.net/api/list.json
-          display: dynamic-list
-          mappings:
-            name: label
-            label: status
-            target: "{url}"
-```
-
-Homepage cannot filter items and shows Other rows without links. Glance shows their `copy` values.
-
-### Glance
-
-Add this widget to Glance's `glance.yml`:
-
-```yaml
-- type: custom-api
-  title: Tailnet Apps
-  title-url: https://home.<tailnet>.ts.net/
-  url: https://home.<tailnet>.ts.net/api/list.json
-  cache: 1m
-  template: |
-    <ul class="list list-gap-10 collapsible-container" data-collapse-after="10">
-    {{ range .JSON.Array "" }}
-      <li class="flex items-center gap-10">
-        <img src="{{ .String "icon" }}" width="20" height="20" alt="" onerror="this.style.visibility='hidden'">
-        {{ if .String "url" }}<a class="color-highlight" href="{{ .String "url" }}">{{ .String "label" }}</a>{{ else }}<span>{{ .String "label" }}</span> <span class="color-subdue">{{ .String "copy" }}</span>{{ end }}
-        <span class="{{ if eq (.String "status") "up" }}color-positive{{ else if eq (.String "status") "down" }}color-negative{{ else }}color-subdue{{ end }}" title="{{ .String "status" }}">●</span>
-      </li>
-    {{ end }}
-    </ul>
-```
-
 ## JSON format
+
+For ready-made Homepage and Glance widgets, see [integrations](integrations.md).
 
 | Endpoint | Response |
 |---|---|

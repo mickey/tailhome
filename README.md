@@ -46,7 +46,7 @@ See [setup](docs/setup.md) for Compose, binaries, systemd and host requirements.
 
 ![tailhome in light and dark themes, with grouped preview versions, app tiles, health dots and copyable connection details](docs/screenshot.png)
 
-For manual cards and widgets, use Homepage, Homarr, Dashy or Heimdall. You can [feed Homepage or Glance your app list](docs/customize.md#homepage-and-glance).
+For manual cards and widgets, use Homepage, Homarr, Dashy or Heimdall. You can [feed Homepage or Glance your app list](docs/integrations.md).
 
 ## Which apps appear
 
@@ -84,11 +84,11 @@ See the [skill guide](skills/tailnet-preview/README.md) for other installs and [
 
 ## Customize tiles
 
-Use [`config/overrides.yaml`](docs/customize.md#overrides) to rename, group, reorder or hide tiles and change icons and links.
+Use [`config/overrides.yaml`](docs/customize.md#overrides) to rename, group, reorder or hide tiles and change icons and links. If DockTail publishes your containers, its labels can [set descriptions and groups](docs/integrations.md#docktail).
 
 ## Documentation
 
-[Setup and configuration](docs/setup.md) · [Apps, previews and page controls](docs/apps.md) · [Customization and JSON endpoints](docs/customize.md) · [Troubleshooting](docs/troubleshooting.md) · [Contributing](CONTRIBUTING.md)
+[Setup and configuration](docs/setup.md) · [Apps, previews and page controls](docs/apps.md) · [Customization and JSON endpoints](docs/customize.md) · [Integrations](docs/integrations.md) · [Troubleshooting](docs/troubleshooting.md) · [Contributing](CONTRIBUTING.md)
 
 ## Security and privacy
 
