@@ -43,8 +43,9 @@ See [setup](docs/setup.md) for Compose, binaries, systemd and host requirements.
 - No published host ports, Docker socket or reverse proxy to configure.
 - Apps appear automatically with health dots. Copy SSH and Postgres connection details from Other.
 - Install the page on your phone's home screen, or open an app with `home/go/<name>`.
+- Pick a color palette such as Catppuccin, Gruvbox or Tokyo Night, in light or dark.
 
-![tailhome in light and dark themes, with grouped preview versions, app tiles, health dots and copyable connection details](docs/screenshot.png)
+<img src="docs/palettes.png" width="880" alt="tailhome in five palettes stacked like cards: Default light, Rosé Pine light, Gruvbox dark, Tokyo Night dark and, in front, Catppuccin dark with the Appearance menu open listing the mode and all eight palettes">
 
 For manual cards and widgets, use Homepage, Homarr, Dashy or Heimdall. You can [feed Homepage or Glance your app list](docs/integrations.md).
 

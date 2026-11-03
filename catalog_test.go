@@ -358,7 +358,7 @@ db:
 // The page links to jsDelivr for icons; it must not send its own address, which names the tailnet.
 func TestPageHeaders(t *testing.T) {
 	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
-	for _, target := range []string{"/", "/api/list.json", "/go/nope"} { // pages, JSON and errors alike
+	for _, target := range []string{"/", "/api/list.json", "/go/nope", "/static/style.css", "/static/app.js"} { // pages, JSON and assets alike
 		rec := get(h, target)
 		if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
 			t.Errorf("%s: Referrer-Policy %q, want same-origin", target, got)

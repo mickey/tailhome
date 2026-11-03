@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -18,9 +21,46 @@ var indexHTML string
 //go:embed icons
 var icons embed.FS
 
+//go:embed static
+var static embed.FS
+
+var assetVersions = func() map[string]string {
+	versions := make(map[string]string)
+	err := fs.WalkDir(static, "static", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := static.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		versions[strings.TrimPrefix(path, "static/")] = fmt.Sprintf("%x", sha256.Sum256(data))[:12]
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	return versions
+}()
+
+func assetVersion(name string) (string, error) {
+	version, ok := assetVersions[name]
+	if !ok {
+		return "", fmt.Errorf("unknown static asset %q", name)
+	}
+	return version, nil
+}
+
 var page = template.Must(template.New("index.html").Funcs(template.FuncMap{
 	"link": link, "previewBlocks": previewBlocks, "previewName": previewName,
-	"bareHost": bareHost,
+	"bareHost":     bareHost,
+	"palettes":     func() []paletteFamily { return palettes },
+	"paletteCSS":   func() template.CSS { return paletteCSS },
+	"paletteIDs":   func() []string { return paletteIDs },
+	"assetVersion": assetVersion,
 }).Parse(indexHTML))
 
 type previewBlock struct {
@@ -138,6 +178,10 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	mux.HandleFunc("GET /icons/{name}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400") // embedded files have no modification time
 		http.ServeFileFS(w, r, icons, "icons/"+r.PathValue("name"))
+	})
+	mux.HandleFunc("GET /static/{name}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		http.ServeFileFS(w, r, static, "static/"+r.PathValue("name"))
 	})
 	// Shortcuts for the address bar: home/go/jellyfin opens the jellyfin tile.
 	goTo := func(w http.ResponseWriter, r *http.Request) {

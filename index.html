@@ -9,139 +9,35 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)">
-<script>
-  // Apply a saved theme before first paint, so the page never flashes the other one.
-  (() => {
-    let t;
-    try { t = localStorage.getItem("tailhome-theme"); } catch {} // storage can be blocked
-    if (t !== "light" && t !== "dark") return;
-    document.documentElement.dataset.theme = t;
-    const c = t === "dark" ? "#151514" : "#f6f6f4";
-    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", c));
-  })();
-</script>
 <style>
-  :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --ok: #1f7a43; --down: #d1453b; --unknown: #8a8a83; --warn: #c88a12; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #a3a39c; --line: #393936; --up: #45b46f; --ok: #5cc985; --unknown: #a3a39c; } }
-  /* A theme picked with the header button overrides the system one, for this browser only. */
-  :root[data-theme="light"] { color-scheme: light; --bg: #f6f6f4; --card: #fff; --fg: #1c1c1a; --muted: #6b6b66; --line: #e3e3de; --up: #2f9e5b; --ok: #1f7a43; --unknown: #8a8a83; }
-  :root[data-theme="dark"] { color-scheme: dark; --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #a3a39c; --line: #393936; --up: #45b46f; --ok: #5cc985; --unknown: #a3a39c; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
-  main { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; }
-  header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 28px; }
-  h1 { font-size: 22px; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
-  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 32px 0 12px; }
-  a { color: inherit; text-decoration: none; }
-  .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .meta a, .meta button, .help a, .notices a, .panel .close { text-decoration: underline; text-underline-offset: 3px; }
-  .meta form { display: inline; }
-  .meta button, .panel .close { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-  .meta .theme { display: inline-grid; place-items: center; width: 36px; height: 36px; margin-left: 8px; vertical-align: middle; padding: 0; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
-  .meta .theme:hover { border-color: var(--muted); }
-  :where(a, button):focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
-  .theme svg { width: 16px; height: 16px; }
-  .theme [data-t] { display: none; }
-  .theme[data-theme="light"] [data-t="dark"], .theme[data-theme="dark"] [data-t="light"] { display: block; }
-  /* The help panel: a popover, so it needs no script and closes on Escape or an outside click. */
-  .panel { position: fixed; inset: 76px max(20px, calc((100vw - 960px) / 2 + 20px)) auto auto; margin: 0; width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 100px); overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--muted) var(--card); scrollbar-width: thin; padding: 24px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / .14), 0 2px 6px rgb(0 0 0 / .06); }
-  @supports not selector(:popover-open) { .panel { display: none; } } /* older browsers would show it for good */
-  @media (max-width: 520px) { .panel { inset: 12px 12px auto; width: auto; max-height: calc(100dvh - 24px); } }
-  .help h2 { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--fg); }
-  .panel h2 { font-size: 15px; margin: 0 0 8px; }
-  .panel section:first-of-type h2 { padding-right: 56px; }
-  .panel section + section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
-  .help p { margin: 0 0 12px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
-  .help h3 { font-size: 13px; font-weight: 600; margin: 24px 0 8px; }
-  .help ol, .help ul { margin: 0; padding-left: 20px; font-size: 14px; overflow-wrap: anywhere; }
-  .help li { margin: 6px 0; padding-left: 2px; }
-  .panel .close { position: absolute; top: 12px; right: 14px; min-height: 44px; padding: 0 8px; font-size: 13px; color: var(--muted); }
-  .snippet { display: flex; align-items: flex-start; gap: 12px; width: 100%; margin: 0 0 6px; padding: 10px 12px; font: inherit; color: inherit; text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; cursor: copy; }
-  .snippet code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .snippet .copied { flex: none; font-size: 13px; color: var(--muted); }
-  .snippet .copied.done { color: var(--ok); }
-  li .snippet { margin: 6px 0 0; }
-  .error { background: color-mix(in srgb, var(--down) 12%, var(--card)); border: 1px solid var(--down); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
-  .notices { list-style: none; margin: 0 0 20px; padding: 0; font-size: 14px; }
-  .notices li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; }
-  .notices li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); transform: translateY(-1px); }
-  .empty { max-width: 65ch; margin-top: 40px; }
-  .empty h2 { font-size: 18px; margin: 0 0 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); align-items: start; gap: 12px; }
-  .tile { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 76px; padding: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
-  .tile:hover, .tile:focus-visible, .snippet:hover, .snippet:focus-visible { border-color: var(--muted); }
-  .tile:active, .snippet:active, .meta .theme:active { background: color-mix(in srgb, var(--fg) 5%, var(--card)); }
-  .meta button:hover, .panel .close:hover, .help a:hover, .notices a:hover { color: var(--fg); }
-  .icon { position: relative; flex: none; width: 36px; height: 36px; overflow: hidden; border-radius: 8px; background: var(--line); display: grid; place-items: center; font-weight: 600; color: color-mix(in srgb, var(--fg) 45%, var(--muted)); text-transform: uppercase; }
-  .icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--card); visibility: hidden; }
-  .icon img.loaded { visibility: visible; }
-  /* Icons drawn in two colors: the dark-background variant follows the page theme. */
-  .icon .on-dark { display: none; }
-  :root[data-theme="dark"] .icon .on-light { display: none; }
-  :root[data-theme="dark"] .icon .on-dark { display: block; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .icon .on-light { display: none; }
-    :root:not([data-theme="light"]) .icon .on-dark { display: block; }
+{{paletteCSS}}</style>
+<link rel="stylesheet" href="/static/style.css?v={{assetVersion "style.css"}}">
+<script>
+  // Restore choices before the body paints.
+  const appearanceMedia = matchMedia("(prefers-color-scheme: dark)");
+  const paletteNames = {{paletteIDs}};
+  let appearanceMode = "system", appearancePalette = "default";
+  try {
+    const mode = localStorage.getItem("tailhome-theme");
+    const palette = localStorage.getItem("tailhome-palette");
+    if (mode === "light" || mode === "dark") appearanceMode = mode;
+    if (paletteNames.includes(palette)) appearancePalette = palette;
+  } catch {} // Storage can be blocked.
+  function applyAppearance() {
+    const root = document.documentElement;
+    root.dataset.theme = appearanceMode === "system" ? (appearanceMedia.matches ? "dark" : "light") : appearanceMode;
+    root.dataset.palette = appearancePalette;
+    const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.content = bg);
   }
-  .text { min-width: 0; flex: 1; }
-  .label { font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
-  .sub { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reason { margin-top: 4px; color: color-mix(in srgb, var(--fg) 24%, var(--muted)); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--unknown); }
-  .dot.up { background: var(--up); }
-  .dot.down { background: var(--down); }
-  .other { display: flex; flex-direction: column; gap: 8px; }
-  .other .tile { cursor: copy; font: inherit; color: inherit; text-align: left; width: 100%; }
-  .other .tile:hover code, .other .tile:focus-visible code { color: var(--fg); }
-  /* Say how Other works once, in its heading, instead of on every row. */
-  h2 .how { margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; }
-  h2 .tap { display: none; }
-  @media (hover: none) { h2 .tap { display: inline; } h2 .click { display: none; } }
-  .copied { color: var(--ok); font-weight: 400; }
-  .manual { margin-top: 6px; font-size: 13px; color: var(--fg); }
-  .manual code { display: block; word-break: break-all; }
-  .manual span { color: var(--muted); }
-  code { font: 13px ui-monospace, monospace; }
-  .meta button { min-height: 36px; }
-  .previews, .set { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); align-items: start; gap: 12px; min-width: 0; }
-  .previews > *, .set > *, .preview { min-width: 0; }
-  .preview { align-items: flex-start; padding: 14px; }
-  .preview .text { display: flex; flex-direction: column; gap: 4px; }
-  .preview .label, .preview .desc { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .preview .desc { color: var(--muted); font-size: 13px; }
-  .preview .origin { margin-top: 6px; display: flex; align-items: center; gap: 6px; color: var(--muted); min-width: 0; }
-  .origin code { font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
-  .ring { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--up); }
-  .ring.down { border-color: var(--down); }
-  .unverified { color: var(--fg); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-  .preview .unverified { margin-top: 4px; }
-  .set { grid-column: 1 / -1; margin-top: 12px; }
-  .set + .set { margin-top: 20px; }
-  .set-name { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; }
-  .set-name .name { min-width: 0; overflow-wrap: anywhere; }
-  .set-name .count, .set-name .host { font-weight: 400; color: var(--muted); font-size: 13px; }
-  .set-name .count { white-space: nowrap; }
-  .set-name .host { overflow-wrap: anywhere; min-width: 0; }
-  .version { flex: none; min-width: 36px; min-height: 36px; padding: 4px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 16px; background: color-mix(in srgb, var(--up) 16%, var(--card)); border: 1px solid color-mix(in srgb, var(--up) 35%, var(--line)); }
-  .apps-start { margin-top: 36px; }
-  @media (max-width: 520px) {
-    main { padding: 20px 16px 48px; }
-    .previews, .set, .grid { grid-template-columns: minmax(0, 1fr); }
-    .meta button { min-height: 44px; }
-    .meta .theme { width: 44px; height: 44px; }
-    header { gap: 4px 8px; margin-bottom: 24px; }
-    .meta { white-space: nowrap; margin-left: auto; }
-    .panel { padding: 20px; }
-  }
-  ::selection { color: var(--fg); background: color-mix(in srgb, var(--up) 28%, var(--card)); }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-</style>
+  applyAppearance();
+</script>
 </head>
 <body>
 <main>
   <header>
     <h1>{{.Title}}</h1>
-    <div class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<form method="post" action="/refresh"><button>refresh</button></form> · <button type="button" popovertarget="help">help</button><button class="theme" type="button" id="theme" data-theme="light" aria-label="Switch to dark theme" title="Switch to dark theme"><svg data-t="light" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg><svg data-t="dark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1z"/></svg></button></div>
+    <div class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<form method="post" action="/refresh"><button>refresh</button></form> · <button type="button" popovertarget="help">help</button><button class="appearance-button" type="button" id="appearance-button" aria-label="Appearance" title="Appearance" aria-haspopup="dialog" aria-controls="appearance" aria-expanded="false" popovertarget="appearance"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a6 6 0 0 0 0 12h.7a1.4 1.4 0 0 0 1-2.4 1 1 0 0 1 .7-1.7h1a2.6 2.6 0 0 0 2.6-2.6C14 4.2 11.2 2 8 2z"/><circle cx="5" cy="6.4" r=".75" fill="currentColor" stroke="none"/><circle cx="8" cy="4.6" r=".75" fill="currentColor" stroke="none"/><circle cx="11" cy="6.4" r=".75" fill="currentColor" stroke="none"/><circle cx="4.6" cy="9.5" r=".75" fill="currentColor" stroke="none"/></svg></button></div>
   </header>
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
   {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}
@@ -164,7 +60,7 @@
     {{range .Entries}}
     <a class="tile" href="{{link .URL}}" title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
       {{template "icon" .}}
-      <div class="text"><div class="label">{{.Label}}</div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}{{template "reason" .}}</div>
+      <div class="text"><div class="label">{{.Label}}</div>{{template "summary" .}}</div>
       {{if .Unverified}}<span class="unverified">HTTPS certificate could not be verified</span>{{end}}
       {{template "dot" .}}
     </a>
@@ -177,7 +73,7 @@
     {{range .}}
     <button class="tile" type="button" data-copy="{{.Copy}}" title="Copy {{.Copy}}">
       {{template "icon" .}}
-      <div class="text"><div class="label">{{.Label}}<span class="copied" aria-hidden="true"></span></div>{{with .Description}}<div class="sub">{{.}}</div>{{end}}<div class="sub"><code>{{.Copy}}</code>{{if eq .Copy .Host}}{{with .Ports}} · {{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{end}}{{end}}</div>{{template "reason" .}}</div>
+      <div class="text"><div class="label">{{.Label}}<span class="copied" aria-hidden="true"></span></div>{{template "summary" .}}<div class="sub"><code>{{.Copy}}</code>{{if eq .Copy .Host}}{{with .Ports}} · {{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{end}}{{end}}</div></div>
       {{template "dot" .}}
     </button>
     {{end}}
@@ -221,94 +117,28 @@
       {{template "addapp"}}
     </section>
   </div>
+  <div id="appearance" class="panel appearance" popover role="dialog" aria-label="Appearance" tabindex="-1">
+    <h2>Appearance</h2>
+    <button class="close" type="button" popovertarget="appearance" popovertargetaction="hide" aria-label="Close appearance">Close</button>
+    <fieldset><legend>Mode</legend><div class="mode-options">
+<label class="mode-choice"><input class="sr" type="radio" name="appearance-mode" value="system"><svg class="choice-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>System</span></label>
+<label class="mode-choice"><input class="sr" type="radio" name="appearance-mode" value="light"><svg class="choice-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>Light</span></label>
+<label class="mode-choice"><input class="sr" type="radio" name="appearance-mode" value="dark"><svg class="choice-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>Dark</span></label>
+    </div></fieldset>
+    <fieldset><legend>Palette</legend><div class="palette-options">
+{{range palettes}}
+<label class="palette-choice"><input class="sr" type="radio" name="appearance-palette" value="{{.ID}}"><span class="palette-name">{{.Name}}</span><span class="palette-swatches" data-palette="{{.ID}}" aria-hidden="true"><i></i><i></i><i></i><i></i></span><svg class="choice-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></label>
+{{end}}
+    </div></fieldset>
+  </div>
 </main>
 <p class="sr" role="status" id="status"></p>
-<script>
-  // A home screen app can resume hours later: show current statuses, not the old page.
-  const loaded = Date.now();
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && Date.now() - loaded > 5 * 60 * 1000) location.reload();
-  });
-  // Theme button: switch between light and dark. Until you pick one, the page follows the system.
-  // The choice is saved in this browser only.
-  const themeButton = document.getElementById("theme");
-  const themeColors = document.querySelectorAll('meta[name="theme-color"]');
-  const systemDark = matchMedia("(prefers-color-scheme: dark)");
-  const currentTheme = () => document.documentElement.dataset.theme || (systemDark.matches ? "dark" : "light");
-  const showTheme = () => {
-    const t = currentTheme(), next = t === "dark" ? "light" : "dark";
-    themeButton.dataset.theme = t;
-    themeButton.setAttribute("aria-label", `Switch to ${next} theme`);
-    themeButton.title = `Switch to ${next} theme`;
-  };
-  showTheme();
-  systemDark.addEventListener("change", showTheme);
-  themeButton.addEventListener("click", () => {
-    const t = currentTheme() === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = t;
-    for (const m of themeColors) m.setAttribute("content", t === "dark" ? "#151514" : "#f6f6f4");
-    showTheme();
-    // Blocked or full storage only loses the memory of the choice, not the switch.
-    try { localStorage.setItem("tailhome-theme", t); } catch {}
-  });
-  const status = document.getElementById("status");
-  const clearManual = () => {
-    document.querySelectorAll(".manual").forEach((n) => n.remove());
-    document.querySelectorAll(".snippet .copied:not(.done)").forEach((m) => { m.textContent = m.dataset.idle; });
-  };
-  async function copy(value) {
-    try { await navigator.clipboard.writeText(value); return true; } catch {}
-    // The Clipboard API needs HTTPS; this older path also works on plain HTTP, during a click.
-    const back = document.activeElement; // select() moves focus; give it back after
-    const ta = Object.assign(document.createElement("textarea"), { value });
-    ta.style.cssText = "position:fixed;opacity:0";
-    document.body.append(ta);
-    ta.select();
-    let ok = false;
-    try { ok = document.execCommand("copy"); } catch {}
-    ta.remove();
-    back?.focus({ preventScroll: true });
-    return ok;
-  }
-  document.addEventListener("click", async (ev) => {
-    if (ev.target.closest(".manual")) return; // leave the value selectable
-    clearManual();
-    const el = ev.target.closest("[data-copy]");
-    if (!el) return;
-    const value = el.dataset.copy;
-    if (await copy(value)) {
-      // Rows show " · Copied" after their label; snippets swap their "Copy" hint.
-      const mark = el.querySelector(".copied");
-      mark.textContent = mark.dataset.done ?? " · Copied";
-      mark.classList.add("done");
-      clearTimeout(mark.timer);
-      mark.timer = setTimeout(() => { mark.textContent = mark.dataset.idle ?? ""; mark.classList.remove("done"); }, 1500);
-      status.textContent = "Copied " + value;
-      return;
-    }
-    // Both paths refused: show the value selected so Ctrl+C or ⌘C copies it.
-    status.textContent = "Copying is blocked. " + value + " is selected: press Command+C or Ctrl+C.";
-    if (el.matches(".snippet")) { // the snippet already shows the whole value
-      getSelection().selectAllChildren(el.querySelector("code"));
-      el.querySelector(".copied").textContent = "Press ⌘C or Ctrl+C";
-      return;
-    }
-    const box = document.createElement("div");
-    box.className = "manual";
-    const code = document.createElement("code");
-    code.textContent = value;
-    const hint = document.createElement("span");
-    hint.textContent = "Copying is blocked here. Press ⌘C or Ctrl+C.";
-    box.append(code, hint);
-    el.querySelector(".text").append(box);
-    getSelection().selectAllChildren(code);
-  });
-</script>
+<script src="/static/app.js?v={{assetVersion "app.js"}}"></script>
 </body>
 </html>
 {{define "icon"}}<span class="icon" aria-hidden="true">{{printf "%.1s" .Label}}{{with .Icon}}<img src="{{.}}" alt="" onload="this.classList.add('loaded')"{{if $.IconDark}} class="on-light"{{end}}>{{end}}{{with .IconDark}}<img src="{{.}}" alt="" onload="this.classList.add('loaded')" class="on-dark">{{end}}</span>{{end}}
 {{define "dot"}}{{if eq .Check "tls"}}{{template "ring" .}}{{else}}{{$s := "Not checked"}}{{if eq .Status "up"}}{{$s = "Up"}}{{else if eq .Status "down"}}{{$s = "Down"}}{{end}}<span class="dot {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}{{with .Reason}}: {{.}}{{end}}"></span>{{end}}{{end}}
-{{define "reason"}}{{if eq .Status "down"}}{{with .Reason}}<div class="sub reason" title="{{.}}">{{.}}</div>{{end}}{{end}}{{end}}
+{{define "summary"}}{{if and (eq .Status "down") .Reason}}<div class="sub reason" title="{{.Reason}}">{{.Reason}}</div>{{with .Description}}<span class="sr">{{.}}</span>{{end}}{{else}}{{with .Description}}<div class="sub">{{.}}</div>{{end}}{{end}}{{end}}
 {{define "ring"}}{{$s := "HTTPS connection succeeded at last refresh; pages and app health not checked"}}{{if eq .Status "down"}}{{$s = "HTTPS connection failed at last refresh; pages and app health not checked"}}{{end}}<span class="ring {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}"></span>{{end}}
 {{define "preview" -}}
 <a class="tile preview" href="{{link .URL}}" aria-label="{{previewName .}}" aria-describedby="preview-desc-{{.Name}} preview-origin-{{.Name}}{{if .Unverified}} preview-trust-{{.Name}}{{end}}">

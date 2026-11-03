@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"html/template"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -70,12 +74,15 @@ func TestWebIconVariants(t *testing.T) {
 
 // Phones have no hover, so a down tile must show why in its text.
 func TestWebDownReasonIsVisible(t *testing.T) {
-	down := Entry{Label: "App", URL: "https://app/", Status: StatusDown, Reason: "HTTP 503"}
+	down := Entry{Label: "App", URL: "https://app/", Description: "Private documents", Status: StatusDown, Reason: "HTTP 503"}
 	stale := Entry{Label: "Was down", URL: "https://old/", Status: StatusUp, Reason: "HTTP 503"}
 	other := Entry{Label: "SSH", Copy: "ssh host", Status: StatusDown, Reason: "Device offline"}
 	html := renderWebView(t, View{Groups: []Group{{Name: "Apps", Entries: []Entry{down, stale}}}, Other: []Entry{other}}, false)
 	if strings.Count(html, `<div class="sub reason" title="HTTP 503">HTTP 503</div>`) != 1 {
 		t.Error("down tile reason not shown exactly once")
+	}
+	if strings.Count(html, "Private documents") != 1 || !strings.Contains(html, `<span class="sr">Private documents</span>`) {
+		t.Error("down tile description must appear only as screen-reader text")
 	}
 	if !strings.Contains(html, `<div class="sub reason" title="Device offline">Device offline</div>`) {
 		t.Error("down Other row reason not shown")
@@ -174,5 +181,44 @@ func TestWebPreviewAccessibleName(t *testing.T) {
 				t.Errorf("name = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestWebStaticAssets(t *testing.T) {
+	h := NewHandler(&Catalog{}, "home")
+	html := get(h, "/").Body.String()
+	for name, contentType := range map[string]string{"style.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8"} {
+		data, err := static.ReadFile("static/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantVersion := fmt.Sprintf("%x", sha256.Sum256(data))[:12]
+		if got := assetVersions[name]; got != wantVersion {
+			t.Fatalf("%s: version %q, want content hash %q", name, got, wantVersion)
+		}
+		src := "/static/" + name + "?v=" + assetVersions[name]
+		if !strings.Contains(html, src) {
+			t.Errorf("page missing versioned asset %s", src)
+		}
+		rec := get(h, src)
+		if rec.Code != 200 || rec.Header().Get("Content-Type") != contentType {
+			t.Errorf("%s: %d %s", src, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "public, max-age=31536000" {
+			t.Errorf("%s: Cache-Control %q", src, got)
+		}
+	}
+	if rec := get(h, "/static/missing.css"); rec.Code != 404 {
+		t.Errorf("missing asset: %d, want 404", rec.Code)
+	}
+}
+
+func TestWebUnknownAssetVersion(t *testing.T) {
+	tmpl, err := template.New("unknown-asset").Funcs(template.FuncMap{"assetVersion": assetVersion}).Parse(`{{assetVersion "missing.css"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpl.Execute(io.Discard, nil); err == nil || !strings.Contains(err.Error(), `unknown static asset "missing.css"`) {
+		t.Errorf("unknown asset render error: %v", err)
 	}
 }
