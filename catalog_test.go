@@ -894,3 +894,34 @@ func TestTemporaryOverrideRejectsServices(t *testing.T) {
 		})
 	}
 }
+
+func TestTileTarget(t *testing.T) {
+	path := writeOverrides(t, `
+named:
+  target: docs
+plain:
+  label: Plain
+`)
+	services := []tsapi.Service{
+		{Name: "svc:named", Ports: []string{"tcp:443"}},
+		{Name: "svc:plain", Ports: []string{"tcp:443"}},
+	}
+	for _, tc := range []struct {
+		linkTarget, named, plain string
+	}{
+		{"", "docs", ""},     // unset: no change in behavior
+		{"self", "docs", ""}, // an override still names its tab
+		{"blank", "docs", "_blank"},
+	} {
+		c := newCatalog(&fakeLister{services: services}, &fakeNet{}, path)
+		c.LinkTarget = tc.linkTarget
+		c.Refresh(t.Context())
+		got := map[string]string{}
+		for _, e := range c.View().all() {
+			got[e.Name] = e.Target
+		}
+		if got["named"] != tc.named || got["plain"] != tc.plain {
+			t.Errorf("LinkTarget %q: got %v, want named=%q plain=%q", tc.linkTarget, got, tc.named, tc.plain)
+		}
+	}
+}

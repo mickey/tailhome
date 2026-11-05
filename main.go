@@ -76,6 +76,10 @@ func run() error {
 	if iconsOn != "on" && iconsOn != "off" {
 		return fmt.Errorf("TAILHOME_ICONS must be on or off, got %q", iconsOn)
 	}
+	linkTarget := env("TAILHOME_LINK_TARGET", "blank")
+	if linkTarget != "self" && linkTarget != "blank" {
+		return fmt.Errorf("TAILHOME_LINK_TARGET must be self or blank, got %q", linkTarget)
+	}
 	deviceTags, err := envTags("TAILHOME_DEVICE_TAGS")
 	if err != nil {
 		return err
@@ -218,6 +222,7 @@ func run() error {
 		Self:            self,
 		Prober:          NewProber(srv.Dial),
 		Local:           !apiMode,
+		LinkTarget:      linkTarget,
 		Notices:         notices,
 		Icons:           icons,
 		NoCDNIcons:      iconsOn == "off",

@@ -22,6 +22,7 @@ type Override struct {
 	Web         *bool  `yaml:"web"`
 	Copy        string `yaml:"copy"`
 	Temporary   *bool  `yaml:"temporary"`
+	Target      string `yaml:"target"`
 }
 
 // LoadOverrides returns overrides keyed by Service name without "svc:".
