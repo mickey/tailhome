@@ -87,6 +87,7 @@ type deviceCheck struct {
 	override   Override
 	diagnostic string
 	fetched    bool
+	hidden     bool
 }
 
 func (d deviceCheck) tlsOnly() bool { return d.port != 443 || d.state.temporary }
@@ -361,7 +362,7 @@ func (c *Catalog) entryFor(check deviceCheck, name, bare string) Entry {
 		Name: name, Source: "device", Host: check.DNSName, nodeID: check.ID,
 		Description: check.override.Description, Group: cmp.Or(check.override.Group, "Apps"),
 		Ports: []string{fmt.Sprintf("tcp:%d", check.port)},
-		URL:   cmp.Or(check.override.URL, endpointURL(check.DNSName, check.port)),
+		URL:   cmp.Or(check.override.URL, endpointURL(check.DNSName, check.port)), hidden: check.hidden,
 		order: check.override.Order, Unverified: check.unverified,
 	}
 	fallback := titleCase(bare)
@@ -436,8 +437,11 @@ func (c *Catalog) eligibleDevices(listed []Device, reserved map[string]bool, ove
 				continue
 			}
 			members[name] = true
+			hidden := !reserved[bare] && overrides[bare].Hidden || port != 443 && overrides[name].Hidden
 			switch {
-			case !reserved[bare] && overrides[bare].Hidden || port != 443 && overrides[name].Hidden:
+			case slices.Contains(d.Tags, shareTag):
+				rejected[id] = "public sharing node"
+			case hidden && !c.IncludeHidden:
 				rejected[id] = "hidden"
 			case len(c.DeviceTags) != 0 && !matchesDeviceTags(d.Tags, c.DeviceTags):
 				rejected[id] = "no longer matches device tags"
@@ -445,7 +449,7 @@ func (c *Catalog) eligibleDevices(listed []Device, reserved map[string]bool, ove
 				rejected[id] = "Service name collision"
 				c.warnOnce("collision:"+bare, "warning: device %s shares a Service name; the Service takes precedence", bare)
 			default:
-				eligible[id] = deviceCheck{Device: d, port: port, insecure: matchesDeviceTags(d.Tags, c.InsecureTLSTags), override: overrides[name]}
+				eligible[id] = deviceCheck{Device: d, port: port, insecure: matchesDeviceTags(d.Tags, c.InsecureTLSTags), override: overrides[name], hidden: hidden}
 			}
 		}
 	}

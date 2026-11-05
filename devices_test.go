@@ -500,7 +500,7 @@ func TestCatalogDeviceOverridesSourcesAndTooltip(t *testing.T) {
 	if c.warned["override:app"] {
 		t.Fatal("member override warned as unknown")
 	}
-	h := NewHandler(c, "home")
+	h := newHandler(c, "home", nil)
 	for _, target := range []string{"/api/services.json", "/api/list.json"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest("GET", target, nil))

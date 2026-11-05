@@ -53,7 +53,7 @@ func TestCtrlCDuringEnrollment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	api := stalledAPI(t, ctx, time.Minute)
 	time.AfterFunc(100*time.Millisecond, cancel)
-	within(t, 2*time.Second, func() error { _, err := mintAuthKey(ctx, api, "tag:tailhome", time.Minute); return err })
+	within(t, 2*time.Second, func() error { _, err := mintAuthKey(ctx, api, "tag:tailhome", time.Minute, false); return err })
 }
 
 // Only a token endpoint that refuses the auth_keys scope (403, a read-only
@@ -85,7 +85,7 @@ func TestReadOnlyClientFallsBackOtherErrorsFail(t *testing.T) {
 		}))
 		base, _ := url.Parse(srv.URL)
 		api := &tsapi.Client{BaseURL: base, Auth: oauthClient{ctx: t.Context(), id: "id", secret: "secret", scopes: []string{"auth_keys"}, timeout: time.Second}}
-		_, err := mintAuthKey(t.Context(), api, "tag:tailhome", time.Second)
+		_, err := mintAuthKey(t.Context(), api, "tag:tailhome", time.Second, false)
 		srv.Close()
 		if err == nil {
 			t.Fatalf("token %d, keys %d: minting succeeded, want an error", tc.tokenStatus, tc.keysStatus)

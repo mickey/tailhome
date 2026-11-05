@@ -127,3 +127,75 @@ code { font: 13px ui-monospace, monospace; }
 .palette-swatches i:nth-child(3) { background: var(--up); }
 .palette-swatches i:nth-child(4) { background: var(--down); }
 @media (max-width: 520px) { .appearance { inset: 12px 12px auto; width: auto; max-height: calc(100dvh - 24px); } }
+/* Public sharing is rendered only in opt-in mode. */
+.share-tile { display: flex; align-items: center; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.share-tile > .tile { flex: 1; align-self: stretch; border: 0; }
+.share-tile:has(> .tile:hover) { border-color: var(--muted); }
+.share-slot { display: flex; align-items: center; flex: none; width: 48px; min-height: 36px; }
+.share-globe { display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin: 0 12px 0 0; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.share-slot[hidden] { display: none; }
+.share-globe svg { display: block; width: 14px; height: 14px; overflow: visible; }
+button.share-globe:hover, .share-globe:focus-visible { background: color-mix(in srgb, var(--fg) 6%, var(--card)); color: var(--fg); }
+.share-globe.is-public { color: var(--fg); }
+.share-globe.is-starting .share-meridian { animation: share-globe-turn 3.4s ease-in-out infinite; }
+@keyframes share-globe-turn {
+  0%, 100% { rx: 2.5px; }
+  25% { rx: 4.5px; }
+  65% { rx: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-globe.is-starting .share-meridian { display: none; animation: none; }
+  .share-globe.is-starting .share-pending-meridian { display: block; }
+}
+.share-globe[aria-disabled="true"][aria-controls="share-ineligible"] { opacity: .45; cursor: help; }
+.share-globe[aria-disabled="true"]:focus-visible, .share-globe[aria-disabled="true"]:hover { opacity: 1; }
+.share-globe[role="img"], .share-globe[aria-disabled="true"]:not([aria-controls]) { cursor: default; }
+.share-preview { align-items: flex-start; }
+.share-preview > .share-slot { margin-top: 6.5px; }
+.share-tile.summary-highlight { outline: 2px solid var(--muted); outline-offset: 3px; }
+.share-summary { display: flex; gap: 10px; margin: 0 0 20px; font-size: 13px; overflow-wrap: anywhere; }
+.share-summary[hidden], .share-dialog [hidden] { display: none; }
+.share-summary > .summary-globe { display: inline-grid; place-items: center; flex: none; width: 14px; height: 14px; margin-top: 3px; }
+.summary-globe svg { display: block; width: 14px; height: 14px; overflow: visible; }
+.summary-globe.is-pending > svg { display: none; }
+.summary-globe > .share-spinner { line-height: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .summary-globe.is-pending > svg { display: block; }
+  .summary-globe.is-pending > .share-spinner { display: none; }
+}
+.share-summary button { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.share-spinner { display: inline-block; width: 1ch; color: var(--muted); }
+.share-spinner::before { content: "|"; animation: share-spinner-turn 480ms step-end infinite; }
+@keyframes share-spinner-turn { 0%, 100% { content: "|"; } 25% { content: "/"; } 50% { content: "-"; } 75% { content: "\\"; } }
+@media (prefers-reduced-motion: reduce) { .share-spinner::before { content: "…"; animation: none; } }
+.share-reminder { display: grid; gap: 12px; margin: 0 0 14px; padding: 14px; border: 1px solid var(--warn); border-radius: 8px; background: color-mix(in srgb, var(--warn) 8%, var(--card)); font-size: 13px; }
+.share-reminder p { margin: 0; overflow-wrap: anywhere; }
+.share-reminder .share-buttons { justify-content: flex-start; margin: 0; }
+.share-dialog { margin: auto; width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--muted) var(--card); padding: 24px; border: 1px solid var(--line); border-radius: 12px; color: var(--fg); background: var(--card); box-shadow: 0 12px 32px rgb(0 0 0 / .14); }
+.share-dialog::backdrop { background: rgb(0 0 0 / .32); }
+.share-dialog h2 { margin: 0 0 16px; color: var(--fg); font-size: 17px; text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
+.share-dialog p { margin: 0 0 14px; font-size: 14px; overflow-wrap: anywhere; }
+.share-dialog .detail { font-size: 12px; color: var(--muted); }
+.share-target { padding: 10px 12px; margin-bottom: 18px; background: var(--bg); border-radius: 8px; overflow-wrap: anywhere; }
+.share-target span { display: block; font-size: 12px; color: var(--muted); }
+.share-target code { font-size: 12px; }
+.share-duration { min-width: 0; border: 0; padding: 0; margin: 18px 0 12px; }
+.share-duration legend { padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+.share-duration-options { display: flex; gap: 6px; flex-wrap: wrap; }
+.share-duration-options label { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; cursor: pointer; }
+.share-duration-options label:has(input:checked) { border-color: var(--fg); background: var(--bg); font-weight: 600; }
+.share-duration-options label:has(input:focus-visible) { outline: 2px solid var(--fg); outline-offset: 2px; }
+.share-buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.share-button { min-height: 44px; padding: 9px 12px; border: 1px solid var(--muted); border-radius: 8px; font: inherit; font-size: 13px; background: var(--card); color: var(--fg); cursor: pointer; }
+.share-button:hover { border-color: var(--fg); }
+.share-button.primary { background: var(--fg); color: var(--card); border-color: var(--fg); }
+.share-button:disabled { opacity: .6; cursor: default; }
+.share-dialog .snippet { align-items: center; margin-bottom: 14px; }
+.share-dialog .snippet code { font-size: 12px; }
+@media (max-width: 520px) {
+  .share-globe { width: 44px; height: 44px; }
+  .share-slot { width: 56px; min-height: 44px; }
+  .share-preview > .share-slot { margin-top: 2.5px; }
+  .share-dialog { padding: 18px; }
+  .share-dialog p { font-size: 13px; }
+}

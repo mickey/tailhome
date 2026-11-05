@@ -14,7 +14,7 @@ import (
 func renderWebView(t *testing.T, v View, enabled bool) string {
 	t.Helper()
 	v.PreviewEnabled = enabled
-	return get(NewHandler(&Catalog{view: v}, "home"), "/").Body.String()
+	return get(newHandler(&Catalog{view: v}, "home", nil), "/").Body.String()
 }
 
 func webPreview(name, label, set, version string) Entry {
@@ -119,7 +119,7 @@ func TestWebEmptyStates(t *testing.T) {
 }
 
 func TestWebHelp(t *testing.T) {
-	html := get(NewHandler(&Catalog{}, "team-home"), "/").Body.String()
+	html := get(newHandler(&Catalog{}, "team-home", nil), "/").Body.String()
 	for _, want := range []string{
 		"team-home/go/&lt;name&gt;",
 		"sudo tailscale set --operator=$USER",
@@ -134,7 +134,7 @@ func TestWebJSONAndShortcuts(t *testing.T) {
 	preview := webPreview("devbox:8443", "Preview", "Landing", "A")
 	app := Entry{Name: "devbox", Label: "App", URL: "https://devbox/"}
 	c := &Catalog{view: View{Previews: []Entry{preview}, Groups: []Group{{Name: "Apps", Entries: []Entry{app}}}}}
-	h := NewHandler(c, "home")
+	h := newHandler(c, "home", nil)
 	t.Run("list order", func(t *testing.T) {
 		w := get(h, "/api/list.json")
 		var entries []Entry
@@ -161,7 +161,7 @@ func TestWebJSONAndShortcuts(t *testing.T) {
 		t.Errorf("bare name picked preview: %s", got)
 	}
 	{
-		h = NewHandler(&Catalog{}, "home")
+		h = newHandler(&Catalog{}, "home", nil)
 		w := get(h, "/api/services.json")
 		if !strings.Contains(w.Body.String(), `"previews":[]`) {
 			t.Errorf("null previews: %s", w.Body.String())
@@ -185,7 +185,7 @@ func TestWebPreviewAccessibleName(t *testing.T) {
 }
 
 func TestWebStaticAssets(t *testing.T) {
-	h := NewHandler(&Catalog{}, "home")
+	h := newHandler(&Catalog{}, "home", nil)
 	html := get(h, "/").Body.String()
 	for name, contentType := range map[string]string{"style.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8"} {
 		data, err := static.ReadFile("static/" + name)

@@ -4,13 +4,15 @@
 
 ## Before you start
 
-Enable MagicDNS and HTTPS Certificates in [Tailscale DNS settings](https://console.tailscale.com/admin/dns). Viewers need Tailscale; Service viewers need version 1.86 or later, plus `sudo tailscale set --accept-routes` on Linux before 1.94.
+1. Enable **MagicDNS** and **HTTPS Certificates** in your [Tailscale DNS settings](https://console.tailscale.com/admin/dns).
+2. Install Tailscale on each device that will view `home/` or host an app. (`tailhome`'s own Docker host does not need Tailscale installed, because `tailhome` joins your tailnet directly in userspace via `tsnet`.)
+3. Keep `tailhome`'s state directory (`/data` in Docker) on persistent storage to preserve its node identity, and [disable key expiry](https://tailscale.com/docs/features/access-control/key-expiry) for the node in the Tailscale admin console.
 
-App hosts need Tailscale; tailhome's Docker host does not. Keep the state volume to preserve tailhome's identity and [disable key expiry](https://tailscale.com/docs/features/access-control/key-expiry).
+Service viewers need Tailscale 1.86 or later, plus `sudo tailscale set --accept-routes` on Linux clients before 1.94.
 
 ## Docker Compose
 
-Save [`compose.yaml`](../compose.yaml). With Compose 2.24.0 or later, run:
+Save [`compose.yaml`](../compose.yaml) (and optionally copy [`.env.example`](../.env.example) to `.env`). With Docker Compose 2.24.0 or later, run:
 
 ```sh
 mkdir -p config
@@ -18,32 +20,32 @@ docker compose up -d
 docker compose logs -f
 ```
 
-Open the login link yourself. Whoever opens it chooses tailhome's tailnet and, with OAuth, can see your Service list there; keep it private.
+Open the login link in the logs yourself. Whoever opens it chooses `tailhome`'s tailnet and, with OAuth, can see your Service list there; keep the link private.
 
-When ready, open `http://home/` from a tailnet device, including the trailing slash. If logs show another name, use that.
+When the logs show `serving https://home.<tailnet>.ts.net`, open **http://home/** (with the trailing slash) from any device on your tailnet. If `home` was already taken, use the hostname shown in the logs.
 
-Copy the settings template with `cp .env.example .env`. Use `.env` for settings and `config/overrides.yaml` for [tile overrides](customize.md#overrides).
+Use `.env` for environment settings and `config/overrides.yaml` for [tile overrides](customize.md#overrides).
 
 ## Docker run
 
 ```sh
-docker run -d --name tailhome --restart unless-stopped -v tailhome-data:/data ghcr.io/mickey/tailhome:latest
+docker run -d --name tailhome --restart unless-stopped \
+  -v tailhome-data:/data ghcr.io/mickey/tailhome:latest
 docker logs -f tailhome
 ```
 
-Follow the [Compose login steps](#docker-compose). For unattended login, set `TS_AUTHKEY` to an [auth key](https://tailscale.com/docs/features/access-control/auth-keys).
+Follow the [Compose login steps](#docker-compose). For unattended enrollment, pass `-e TS_AUTHKEY=...` with an [auth key](https://tailscale.com/docs/features/access-control/auth-keys).
 
 ## Binary and Go
 
-Download a [release binary](https://github.com/mickey/tailhome/releases), or use Go 1.27.3 or later:
+Download a static binary from [GitHub Releases](https://github.com/mickey/tailhome/releases) (`linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, `darwin/arm64`, `windows/amd64`), or build with Go 1.27.3 or later:
 
 ```sh
 go install github.com/mickey/tailhome@latest
 tailhome
 ```
 
-Add `$(go env GOPATH)/bin` to `PATH` if needed. Follow the [Compose login steps](#docker-compose).
-
+Add `$(go env GOPATH)/bin` to `PATH` if needed, then follow the [Compose login steps](#docker-compose). Run `tailhome -version` to check the installed version.
 ## Set up OAuth
 
 OAuth adds Service groups and descriptions, and serves home through `svc:home`. You need tailnet admin access.
@@ -83,6 +85,37 @@ For `docker run`, use `--volumes-from tailhome` when resetting state and recreat
 
 Optional Keys → Auth Keys → Write for `tag:tailhome` enables automatic enrollment. A leaked secret with this scope can add devices that may serve home; Services: Read alone only reads Services.
 
+## Public sharing
+
+Off by default. Admins use a tile's globe to share an app through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel); `home/` stays private. Each share has its own ephemeral node at `https://public-<id>.<tailnet>.ts.net`, with paths matching the app's paths. Up to 8 shares can run at once; previews and sharing passwords are unsupported.
+
+### Enable
+
+1. Set up [OAuth](#set-up-oauth), MagicDNS and HTTPS Certificates. Add Keys → Auth Keys → Write (`auth_keys`) for `tag:tailhome-share` to the OAuth client. Tailnet Lock is unsupported.
+2. Add this sharing policy in [access controls](https://console.tailscale.com/admin/acls), replacing `svc:photos` with your app. Keep existing tag owners and grants.
+
+   ```jsonc
+   {
+     "tagOwners": {"tag:tailhome-share": ["tag:tailhome"]},
+     "nodeAttrs": [{"target": ["tag:tailhome-share"], "attr": ["funnel"]}],
+     "grants": [
+       {"src": ["tag:tailhome-share"], "dst": ["svc:photos"], "ip": ["tcp:443"]},
+       {"src": ["autogroup:member"], "dst": ["tag:tailhome-share"], "ip": ["tcp:443"]}
+     ]
+   }
+   ```
+
+   Device apps need a grant from `tag:tailhome-share` to their tag and port. You can also add `autogroup:admin` as a tag owner; `tag:tailhome` must remain an owner when the OAuth client uses that tag. The last grant lets tailnet members open share links.
+3. Set `TAILHOME_SHARE_ADMINS=alice@example.com,bob@example.com`, then restart. Use exact Tailscale login names, separated by commas. A nonempty list enables sharing; empty or unset keeps it off. Admin controls require a direct connection to `home/`, without a reverse proxy.
+
+Anyone on the internet can reach the shared app. Check its login first and read [SECURITY.md](../SECURITY.md#public-sharing).
+
+- Shares last 1 h, 8 h, 24 h (default), 7 days or until stopped. No-end-date shares get 30-day review reminders; reviews never extend expiry.
+- Stop or expiry closes connections and starts node removal. Hiding a tile does not stop a share. Removing one admin leaves existing shares running if other admins remain.
+- Restarts reuse unexpired shares after discovery confirms the app. Offline ephemeral nodes may be removed after 30 to 60 minutes; keep `/data` persistent to reuse cached certificates.
+- Restarting with no sharing admins removes saved nodes using cached state, without OAuth or public listeners, and retries failed removal.
+- Each new share uses certificate quota (50 per tailnet per 7 days); deleting state does not reset it. Public DNS can take up to 10 minutes; tailhome does not probe reachability.
+
 ## Preview ports
 
 `TAILHOME_PREVIEW_PORTS=8443-8452,10000` adds HTTPS discovery ports. Port 443 is always checked; add at most 32 others, between 1 and 65535, excluding 443.
@@ -101,10 +134,16 @@ Leave `TAILHOME_DEVICE_TAGS` empty for personal laptops. Tagging replaces their 
 
 ## systemd
 
-From a repository checkout with the Linux binary at `./tailhome`, run as root: `install -m 755 tailhome /usr/local/bin/; install -d /etc/tailhome; install -m 644 contrib/tailhome.service /etc/systemd/system/; systemctl enable --now tailhome`.
-Put settings in `/etc/tailhome/env`; state lives in `/var/lib/tailhome`. Find the login link with `journalctl -u tailhome`.
-Put overrides in `/etc/tailhome/overrides.yaml`, readable by the service user.
+From a repository checkout with the Linux binary at `./tailhome`, run as root:
 
+```sh
+install -m 755 tailhome /usr/local/bin/
+install -d /etc/tailhome
+install -m 644 contrib/tailhome.service /etc/systemd/system/
+systemctl enable --now tailhome
+```
+
+Put environment variables in `/etc/tailhome/env` and [tile overrides](customize.md#overrides) in `/etc/tailhome/overrides.yaml` (readable by the service user). State lives in `/var/lib/tailhome`. Find the login link with `journalctl -u tailhome`.
 ## Environment variables
 
 Recreate containers or restart binaries after changes. Separate tags with commas or whitespace.
@@ -124,11 +163,12 @@ Recreate containers or restart binaries after changes. Separate tags with commas
 | `TAILHOME_DEVICE_TAGS` | empty | Match any listed tag; empty includes untagged devices |
 | `TAILHOME_DEVICE_INSECURE_TLS_TAGS` | empty | [Certificate exceptions](apps.md#devices-with-their-own-certificate) by tag |
 | `TAILHOME_PREVIEW_PORTS` | empty | [Extra discovery ports](#preview-ports) |
+| `TAILHOME_SHARE_ADMINS` | empty | Comma-separated exact Tailscale login names; a nonempty list enables [public sharing](#public-sharing) |
 | `TAILHOME_SERVICE` | `svc:home` | OAuth Service name |
 | `TAILHOME_TAG` | `tag:tailhome` | OAuth node tag |
 | `TAILHOME_HOSTNAME` | `home`; OAuth: `tailhome` | Node name |
 | `TAILHOME_TAILNET` | OAuth client's tailnet | Tailnet to list |
-| `TS_AUTHKEY` | unset | Enrollment key; OAuth requires `TAILHOME_TAG` permission |
+| `TS_AUTHKEY` | unset | Enrollment key (`TS_AUTH_KEY` is also accepted); OAuth requires `TAILHOME_TAG` permission |
 | `TS_NO_LOGS_NO_SUPPORT` | unset | `true` disables Tailscale diagnostic uploads |
 
 </details>

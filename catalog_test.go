@@ -312,7 +312,7 @@ db:
 		{Name: "svc:bare"},
 	}}
 	c := newCatalog(lister, &fakeNet{}, path)
-	h := NewHandler(c, "start")
+	h := newHandler(c, "start", nil)
 
 	if body := get(h, "/api/services.json").Body.String(); !strings.Contains(body, `"groups":[]`) || !strings.Contains(body, `"other":[]`) {
 		t.Errorf("JSON before first refresh: %s", body)
@@ -357,7 +357,7 @@ db:
 
 // The page links to jsDelivr for icons; it must not send its own address, which names the tailnet.
 func TestPageHeaders(t *testing.T) {
-	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
+	h := newHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start", nil)
 	for _, target := range []string{"/", "/api/list.json", "/go/nope", "/static/style.css", "/static/app.js"} { // pages, JSON and assets alike
 		rec := get(h, target)
 		if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
@@ -371,7 +371,7 @@ func TestPageHeaders(t *testing.T) {
 
 // Phones only offer the page as an app when the manifest and its icons load.
 func TestManifestIcons(t *testing.T) {
-	h := NewHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start")
+	h := newHandler(newCatalog(&fakeLister{}, &fakeNet{}, ""), "start", nil)
 	var m struct {
 		Name  string
 		Icons []struct{ Src string }
@@ -398,7 +398,7 @@ func TestManifestIcons(t *testing.T) {
 // node name and tailnet; a wrong one would send other devices nowhere.
 func TestOtherDeviceAddress(t *testing.T) {
 	c := newCatalog(&fakeLister{}, &fakeNet{}, "")
-	rec := get(NewHandler(c, "home-1"), "/")
+	rec := get(newHandler(c, "home-1", nil), "/")
 	if !strings.Contains(rec.Body.String(), `data-copy="https://home-1.ts.test/"`) {
 		t.Error("page does not offer its own address for other devices")
 	}
@@ -407,7 +407,7 @@ func TestOtherDeviceAddress(t *testing.T) {
 func TestEmptyPageGuidance(t *testing.T) {
 	render := func(c *Catalog) string {
 		c.Refresh(t.Context())
-		return get(NewHandler(c, "home"), "/").Body.String()
+		return get(newHandler(c, "home", nil), "/").Body.String()
 	}
 	const policyHint = "your policy lets this node reach your Services"
 
@@ -483,7 +483,7 @@ func TestEnvTags(t *testing.T) {
 func TestRefreshRejectsOtherSites(t *testing.T) {
 	lister := &fakeLister{}
 	c := newCatalog(lister, &fakeNet{}, "")
-	h := NewHandler(c, "home")
+	h := newHandler(c, "home", nil)
 	for _, tc := range []struct {
 		name    string
 		headers map[string]string
@@ -838,7 +838,7 @@ evil:
 	}}
 	c := newCatalog(lister, &fakeNet{}, path)
 	c.Refresh(t.Context())
-	h := NewHandler(c, "home")
+	h := newHandler(c, "home", nil)
 	for target, want := range map[string]string{
 		"/go/jellyfin":  "https://jellyfin.ts.test/",
 		"/go/JellyFin":  "https://jellyfin.ts.test/",      // case-insensitive

@@ -129,7 +129,7 @@ func link(raw string) any {
 
 const minManualRefresh = 10 * time.Second
 
-func NewHandler(c *Catalog, title string) http.Handler {
+func newHandler(c *Catalog, title string, sharing *shareWeb) http.Handler {
 	// The web app manifest lets phones add the page to the home screen as an app.
 	manifest, err := json.Marshal(map[string]any{
 		"name": title, "short_name": title, "id": "/", "start_url": "/", "scope": "/",
@@ -145,14 +145,24 @@ func NewHandler(c *Catalog, title string) http.Handler {
 	}
 	address := "https://" + title + "." + c.DNSSuffix + "/"
 	mux := http.NewServeMux()
+	if sharing != nil {
+		sharing.mount(mux)
+	}
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data := struct {
 			Title   string
 			Address string // the page's full https address, for other devices
 			Local   bool
+			Sharing *SharePage
 			View
-		}{title, address, c.Local, c.View()}
+		}{Title: title, Address: address, Local: c.Local, View: c.View()}
+		if sharing != nil {
+			p := sharing.snapshot(r)
+			data.Sharing = &p
+			sharing.decorate(&data.View, p)
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		if err := page.Execute(w, data); err != nil {
 			log.Printf("render: %v", err)
 		}

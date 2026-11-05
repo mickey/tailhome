@@ -38,7 +38,13 @@
   <header>
     <h1>{{.Title}}</h1>
     <div class="meta">{{if not .Updated.IsZero}}updated {{.Updated.Format "15:04"}} · {{end}}<form method="post" action="/refresh"><button>refresh</button></form> · <button type="button" popovertarget="help">help</button><button class="appearance-button" type="button" id="appearance-button" aria-label="Appearance" title="Appearance" aria-haspopup="dialog" aria-controls="appearance" aria-expanded="false" popovertarget="appearance"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a6 6 0 0 0 0 12h.7a1.4 1.4 0 0 0 1-2.4 1 1 0 0 1 .7-1.7h1a2.6 2.6 0 0 0 2.6-2.6C14 4.2 11.2 2 8 2z"/><circle cx="5" cy="6.4" r=".75" fill="currentColor" stroke="none"/><circle cx="8" cy="4.6" r=".75" fill="currentColor" stroke="none"/><circle cx="11" cy="6.4" r=".75" fill="currentColor" stroke="none"/><circle cx="4.6" cy="9.5" r=".75" fill="currentColor" stroke="none"/></svg></button></div>
-  </header>
+  </header>{{if .Sharing}}
+  <div id="sharing">
+    <div id="share-summary" class="share-summary" hidden></div>
+    <div id="share-reminders"></div>
+    <p id="share-page-error" class="share-error error" role="alert" hidden></p>
+  </div>
+  <script id="share-initial" type="application/json">{{.Sharing}}</script>{{end}}
   {{with .Error}}<div class="error">Refresh failed: {{.}}</div>{{end}}
   {{with .Notices}}<ul class="notices">{{range .}}<li><span>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkText}}</a>{{end}}</span></li>{{end}}</ul>{{end}}
   {{if .Previews}}
@@ -58,12 +64,12 @@
   <h2{{if and (eq $i 0) $.Previews}} class="apps-start"{{end}}>{{if and $.Previews (eq .Name "Previews")}}Previews (apps){{else}}{{.Name}}{{end}}</h2>
   <div class="grid">
     {{range .Entries}}
-    <a class="tile" href="{{link .URL}}" title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
+    {{if .Share}}<div class="share-tile" data-share-target="{{.Share.TargetID}}">{{end}}<a class="tile" href="{{link .URL}}" title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}</div>{{template "summary" .}}</div>
       {{if .Unverified}}<span class="unverified">HTTPS certificate could not be verified</span>{{end}}
       {{template "dot" .}}
-    </a>
+    </a>{{if .Share}}<span class="share-slot"></span></div>{{end}}
     {{end}}
   </div>
   {{end}}
@@ -130,7 +136,40 @@
 <label class="palette-choice"><input class="sr" type="radio" name="appearance-palette" value="{{.ID}}"><span class="palette-name">{{.Name}}</span><span class="palette-swatches" data-palette="{{.ID}}" aria-hidden="true"><i></i><i></i><i></i><i></i></span><svg class="choice-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></label>
 {{end}}
     </div></fieldset>
-  </div>
+  </div>{{if .Sharing}}
+<dialog id="share-confirm" class="share-dialog" aria-labelledby="share-confirm-title" aria-describedby="share-warning">
+  <h2 id="share-confirm-title"></h2>
+  <div class="share-target"><span>App on your tailnet</span><code id="share-origin"></code></div>
+  <p id="share-warning">Anyone on the internet can reach every route this app exposes.<br>Check the app's login and permissions before sharing.</p>
+  <fieldset class="share-duration"><legend>Duration</legend><div class="share-duration-options">
+    <label><input class="sr" type="radio" name="share-duration" value="1h">1 h</label>
+    <label><input class="sr" type="radio" name="share-duration" value="8h">8 h</label>
+    <label><input class="sr" type="radio" name="share-duration" value="24h" checked>24 h</label>
+    <label><input class="sr" type="radio" name="share-duration" value="7d">7 days</label>
+    <label><input class="sr" type="radio" name="share-duration" value="until-stopped">Until stopped</label>
+  </div></fieldset>
+  <p id="share-deadline" class="detail" role="status"></p>
+  <p class="detail">The hostname and tailnet name will appear in public certificate records, even after sharing stops. Scanners watch these records; expect visits within minutes. The random name is not secret.</p>
+  <p class="share-error error" role="alert" hidden></p>
+  <div class="share-buttons"><button class="share-button" type="button" data-share-close autofocus>Cancel</button><button class="share-button primary" id="share-create" type="button">Share publicly</button></div>
+</dialog>
+<dialog id="share-manage" class="share-dialog" aria-labelledby="share-manage-title">
+  <h2 id="share-manage-title"></h2>
+  <p id="share-message" role="status"></p>
+  <p id="share-next-step" class="detail" hidden>Dismiss removes this record. Sharing again requires fresh confirmation.</p>
+  <button class="snippet" id="share-copy" type="button"><code id="share-public-url"></code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>
+  <p class="detail" id="share-expiry"></p>
+  <p id="share-dns-note" class="detail" hidden>If the link doesn't open yet, wait a minute: the public address is new.</p>
+  <p class="detail" id="share-attribution" hidden></p>
+  <p class="detail" id="share-review" hidden></p>
+  <p class="share-error error" role="alert" hidden></p>
+  <div class="share-buttons"><button class="share-button" type="button" data-share-close autofocus>Close</button><button class="share-button" id="share-dismiss" type="button">Dismiss</button><button class="share-button" id="share-retry" type="button">Retry with confirmation</button><button class="share-button" id="share-stop" type="button">Stop sharing</button></div>
+</dialog>
+<dialog id="share-ineligible" class="share-dialog" aria-labelledby="share-ineligible-title" aria-describedby="share-ineligible-reason">
+  <h2 id="share-ineligible-title"></h2><p id="share-ineligible-reason"></p>
+  <div class="share-buttons"><button class="share-button" type="button" data-share-close autofocus>Close</button></div>
+</dialog>
+{{end}}
 </main>
 <p class="sr" role="status" id="status"></p>
 <script src="/static/app.js?v={{assetVersion "app.js"}}"></script>
@@ -141,7 +180,7 @@
 {{define "summary"}}{{if and (eq .Status "down") .Reason}}<div class="sub reason" title="{{.Reason}}">{{.Reason}}</div>{{with .Description}}<span class="sr">{{.}}</span>{{end}}{{else}}{{with .Description}}<div class="sub">{{.}}</div>{{end}}{{end}}{{end}}
 {{define "ring"}}{{$s := "HTTPS connection succeeded at last refresh; pages and app health not checked"}}{{if eq .Status "down"}}{{$s = "HTTPS connection failed at last refresh; pages and app health not checked"}}{{end}}<span class="ring {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}"></span>{{end}}
 {{define "preview" -}}
-<a class="tile preview" href="{{link .URL}}" aria-label="{{previewName .}}" aria-describedby="preview-desc-{{.Name}} preview-origin-{{.Name}}{{if .Unverified}} preview-trust-{{.Name}}{{end}}">
+{{if .Share}}<div class="share-tile share-preview" data-share-target="{{.Share.TargetID}}">{{end}}<a class="tile preview" href="{{link .URL}}" aria-label="{{previewName .}}" aria-describedby="preview-desc-{{.Name}} preview-origin-{{.Name}}{{if .Unverified}} preview-trust-{{.Name}}{{end}}">
   {{if .Version}}<span class="version" aria-hidden="true">{{.Version}}</span>{{else}}{{template "icon" .}}{{end}}
   <div class="text">
     <div class="label">{{.Label}}</div>
@@ -149,7 +188,7 @@
     <div class="origin" id="preview-origin-{{.Name}}">{{template "ring" .}}<code>{{.Name}}</code></div>
     {{if .Unverified}}<span class="unverified" id="preview-trust-{{.Name}}">HTTPS certificate could not be verified</span>{{end}}
   </div>
-</a>
+</a>{{if .Share}}<span class="share-slot"></span></div>{{end}}
 {{end}}
 {{define "snippet"}}<button class="snippet" type="button" data-copy="{{.}}" title="Copy"><code>{{.}}</code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>{{end}}
 {{define "addapp"}}<h3>One app on a device</h3>

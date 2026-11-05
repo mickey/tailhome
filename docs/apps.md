@@ -31,7 +31,7 @@ A Service becomes a tile when it advertises port 443 or 80, has a `url` or `web:
 
 ### Devices
 
-tailhome discovers devices on port 443 and [configured preview ports](setup.md#preview-ports). It excludes shared-in and hidden devices; use `TAILHOME_DEVICE_TAGS` to filter or `TAILHOME_DEVICES=off` to disable discovery.
+tailhome discovers devices on port 443 and [configured preview ports](setup.md#preview-ports). It ignores shared-in devices, hidden entries, and public-share nodes (`tag:tailhome-share`). Use `TAILHOME_DEVICE_TAGS` to filter devices by tag or `TAILHOME_DEVICES=off` to disable device discovery.
 
 ### Devices with their own certificate
 
@@ -41,27 +41,31 @@ The tile and browser may warn about the certificate. Cards still require a verif
 
 ## Previews
 
-Everyone who can open tailhome sees every listed title, description, address and status, even without access to the app. For confidential projects, use a separately restricted launcher; app grants do not hide metadata.
+In normal use, the [`tailnet-preview` skill](../skills/tailnet-preview/README.md) handles previews for you: ask your coding agent *"Can I see this on my phone?"* or *"Publish three versions of the landing page"*, and it picks free HTTPS ports, publishes the app and its metadata card (`A`, `B`, `C`), verifies the link, and cleans up its mappings when you say you are done.
 
-- Add ports with [`TAILHOME_PREVIEW_PORTS`](setup.md#preview-ports). Extra ports are previews; port 443 becomes a preview with a `preview: true` card.
-- Use a [`temporary: false` override](customize.md#overrides) to keep an extra-port app under Apps.
-- Unreachable previews disappear. Previews do not expire; remove their mappings when finished.
-- Viewers need access to the device and HTTPS port. Keep the host awake and the app running.
+To display those previews at the top of `home/`:
 
-Do not publish untrusted code on a hostname where other apps keep you logged in. Cookies, including `HttpOnly` cookies, are shared across ports.
+- Set [`TAILHOME_PREVIEW_PORTS`](setup.md#preview-ports) on `tailhome` (for example `8443-8452`) so it scans the ports your agent uses. Port 443 is always checked and becomes a preview when its card sets `preview: true`.
+- Previews appear only while their dev server answers, and disappear automatically when stopped. Use a [`temporary: false` override](customize.md#overrides) if you want an extra-port app to stay under **Apps** even when offline.
+- Viewers need Tailscale access to the publishing device and HTTPS port; keep the host awake and the app running.
+
+**Privacy and cookies:** Everyone who can open `tailhome` sees every listed preview's title, description, address and status, even without access to the app itself (keep secrets and internal paths out of titles and descriptions). Browsers also share cookies (including `HttpOnly` cookies) across all ports on a hostname; only publish trusted code on machines where you stay signed in to other apps.
 
 ### Preview cards
 
-Publish the app at `/`, then its card at `/.well-known/tailhome.json` on the same HTTPS port. Choose an approved, free preview port:
+The [`tailnet-preview` skill](../skills/tailnet-preview/README.md) generates, serves and removes `/.well-known/tailhome.json` cards automatically. You only need the manual commands below if you are publishing a preview yourself from the terminal or writing a custom script.
+
+<details>
+<summary>Manual publishing and <code>/.well-known/tailhome.json</code> schema</summary>
+
+Publish the app at `/`, then its card at `/.well-known/tailhome.json` on the same free HTTPS port:
 
 ```sh
 tailscale serve --bg --https=8443 --set-path=/ http://127.0.0.1:3000
 tailscale serve --bg --https=8443 --set-path=/.well-known/tailhome.json 'text:{"title":"Landing redesign","description":"New pricing layout","preview":true,"set":"Landing","version":"A"}'
 ```
 
-Never put secrets, credentials or sensitive source paths in cards. The [tailnet-preview skill](../skills/tailnet-preview/) handles publishing and cleanup.
-
-All fields are optional:
+Serve a JSON object with HTTP 200, at most 4096 bytes. All fields are optional:
 
 | Field | Value |
 |---|---|
@@ -72,26 +76,27 @@ All fields are optional:
 | `set` | Group title, up to 60 characters; grouped within one host |
 | `version` | One or two ASCII letters or digits, shown as a badge |
 
-Serve a JSON object with HTTP 200, at most 4096 bytes. Each version needs its own app instance, port, card and URL.
-
-Before removing a manual publication, check that both mounts still belong to you:
+Each version needs its own app instance, port, card and URL. Before removing a manual publication, check that both mounts still belong to you:
 
 ```sh
 tailscale serve --https=8443 --set-path=/.well-known/tailhome.json off
 tailscale serve --https=8443 --set-path=/ off
 ```
 
-Do not use whole-port `off` or `serve reset` on shared configuration. Let third-party publishing tools remove their own mappings.
+Do not use whole-port `off` or `serve reset` on shared configuration.
+
+</details>
 
 ### Card refresh and checks
 
-After publishing or changing a card, select **refresh**. If it is missing, check the exact HTTPS URL, port configuration and certificate, then try refreshing again later.
+When `TAILHOME_URL` is set in the agent's environment, the skill refreshes `home/` and confirms the listing automatically. Otherwise, click **refresh** on `home/` after publishing or updating a card.
 
 ## Using the page
 
 - Select **refresh** to update the list. A discovery error leaves the last list visible.
 - Select an Other row to copy connection details; customize these with a `copy` override.
 - Use the **Appearance** menu to choose a mode and a palette, saved per browser.
+- With [public sharing](setup.md#public-sharing) on, admins use a tile's globe to share the app or stop a share. A filled globe means the app is public. Shares keep running and stay in the summary if their tile is hidden later. Previews cannot be shared.
 - On phones, use Safari's Add to Home Screen or Chrome's Install app.
 - Open `home/go/jellyfin` by name, or `/go/devbox:8443` for a specific device port.
 

@@ -1,20 +1,24 @@
 # <img src="docs/logo.svg" alt="tailhome logo" width="40" height="40"> tailhome
 
-Stop maintaining dashboard cards. tailhome lists the apps on your [tailnet](https://tailscale.com/docs/concepts/tailnet), and the previews your coding agents publish.
+**The start page that builds itself from your [tailnet](https://tailscale.com/docs/concepts/tailnet), plus live HTTPS previews from your coding agents.**
+
+Stop editing YAML every time you spin up a container or start a dev server. Run `tailhome` once to get **http://home/** on every Tailscale device: your NAS, homelab and team apps appear automatically with icons and live health checks, and your coding agents can publish side-by-side branch previews (`A`, `B`, `C`) straight to your phone.
 
 <img src="docs/demo.gif" width="880" alt="Simulated demo: on a NAS, tailscale serve publishes Jellyfin and its tile appears on home/ on a phone. Then a coding agent asked &quot;Can I see these three versions on my phone?&quot; publishes versions A, B and C, home/ lists them as Landing redesign, version B opens, and the previews are removed.">
 
 [![Release](https://img.shields.io/github/v/release/mickey/tailhome)](https://github.com/mickey/tailhome/releases) [![CI](https://github.com/mickey/tailhome/actions/workflows/ci.yml/badge.svg)](https://github.com/mickey/tailhome/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/github/license/mickey/tailhome)](LICENSE)
 
-| You want | Start here |
+`tailhome` (the start page) and `tailnet-preview` (the coding-agent skill) work alone or together:
+
+| What you want | What to install |
 |---|---|
-| A start page for your NAS, home or team | Run [tailhome alone](#quick-start). No agent required. |
-| An agent to give you preview links on your phone | Install [the skill alone](#previews-from-coding-agents). No tailhome server required. |
-| Apps and previews in one place | Install both, then [enable preview discovery](docs/setup.md#optional-list-previews-in-tailhome). |
+| **Auto-discovered start page** for your NAS, homelab or team | [Run `tailhome`](#quick-start) (1 container, no agent required) |
+| **Private phone links** from Claude Code, Codex, Gemini CLI or omp | [Install `tailnet-preview`](#previews-from-coding-agents) (1 command, no `tailhome` server required) |
+| **Apps and live agent previews** in one place | Install both and [enable preview ports](docs/setup.md#optional-list-previews-in-tailhome) |
 
 ## Quick start
 
-1. Install Docker on a machine you keep running. Enable MagicDNS and HTTPS Certificates in your [Tailscale DNS settings](https://console.tailscale.com/admin/dns), then run:
+1. Enable MagicDNS and HTTPS Certificates in your [Tailscale DNS settings](https://console.tailscale.com/admin/dns), then start `tailhome` on any machine running Docker:
 
    ```sh
    docker run -d --name tailhome --restart unless-stopped \
@@ -22,84 +26,112 @@ Stop maintaining dashboard cards. tailhome lists the apps on your [tailnet](http
    docker logs -f tailhome
    ```
 
-   Open the login link in the logs yourself to join your tailnet.
+   Open the login link printed in the logs to join your tailnet.
 
-2. When the logs say `serving https://home.<tailnet>.ts.net`, open **http://home/** from a Tailscale-connected device. Use the name in the logs if different, such as `home-1`.
+2. When the logs show `serving https://home.<tailnet>.ts.net`, open **http://home/** (with the trailing slash) from any device on your tailnet. If `home` was already taken, use the hostname shown in the logs.
 
-3. Empty page? Install Tailscale and sign in on your app's machine, then publish its local port:
+3. **Publish your first app.** On any machine with Tailscale installed, expose a local port to your tailnet:
 
    ```sh
    tailscale serve --bg --https=443 8080
    ```
 
-   On Linux, use `sudo` or run `sudo tailscale set --operator=$USER` once. Press **refresh** to find the app.
+   On Linux, run with `sudo` or grant operator access once with `sudo tailscale set --operator=$USER`. Click **refresh** on `http://home/` and your app tile appears.
 
-Teammates and family only need Tailscale and [access allowed by your tailnet rules](https://tailscale.com/docs/features/access-control).
-
-See [setup](docs/setup.md) for Compose, binaries, systemd and host requirements.
+Teammates and family only need Tailscale and [access in your tailnet policy](https://tailscale.com/docs/features/access-control). See [Setup](docs/setup.md) for Docker Compose, prebuilt binaries, systemd, OAuth (`svc:home`) and unattended auth keys.
 
 ## Why tailhome
 
-- No published host ports, Docker socket or reverse proxy to configure.
-- Apps appear automatically with health dots. Copy SSH and Postgres connection details from Other.
-- Install the page on your phone's home screen, or open an app with `home/go/<name>`.
-- Pick a color palette such as Catppuccin, Gruvbox or Tokyo Night, in light or dark.
+- **Auto-discovered catalog and health checks.** Finds [Tailscale Services](https://tailscale.com/docs/features/tailscale-services) and HTTPS device apps on your tailnet, matches [dashboard-icons](https://github.com/homarr-labs/dashboard-icons), and probes health over Tailscale.
+- **No exposed ports, Docker socket or reverse proxy.** Joins your tailnet in userspace via `tsnet` inside a static, non-root container; the Docker host does not even need Tailscale installed.
+- **Live previews from coding agents.** Ask *"Can I see these three versions on my phone?"* Your agent publishes private HTTPS previews over Tailscale Serve, attaches `A`/`B`/`C` comparison cards, and cleans up its mappings when done.
+- **Built for phones and keyboards.** Install `http://home/` as a mobile web app, jump to any app from the address bar with `home/go/jellyfin`, or copy SSH/Postgres addresses in one click.
+- **Public links when you need them.** Admins can [share an app on the internet](docs/setup.md#public-sharing) for a set time and stop it at any time.
+- **Eight color palettes in light and dark.** Switch between Default, Catppuccin, Gruvbox, Tokyo Night, Rosé Pine, Solarized, Kanagawa and One.
 
 <img src="docs/palettes.png" width="880" alt="tailhome in five palettes stacked like cards: Default light, Rosé Pine light, Gruvbox dark, Tokyo Night dark and, in front, Catppuccin dark with the Appearance menu open listing the mode and all eight palettes">
 
-For manual cards and widgets, use Homepage, Homarr, Dashy or Heimdall. You can [feed Homepage or Glance your app list](docs/integrations.md).
-
-## Which apps appear
-
-- [Tailscale Services](https://tailscale.com/docs/features/tailscale-services). Optional [OAuth](docs/setup.md#set-up-oauth) lists all Services with tags and descriptions.
-- Apps on a device's tailnet name at HTTPS port 443.
-- Agent previews on port 443 or [configured HTTPS ports](docs/setup.md#preview-ports).
-
-For apps on other ports or in containers, see [publishing apps](docs/apps.md).
+**When to use something else:** `tailhome` only lists what lives on your tailnet. For CPU graphs, weather widgets or external bookmarks, use Homepage, Glance, Homarr or Dashy, and optionally [feed them your tailnet app list](docs/integrations.md) via `/api/list.json`.
 
 ## Previews from coding agents
 
+Compare branches on your phone or review a UI running on a remote devbox without port forwarding, public tunnels, or staging deploys.
+
 > [!TIP]
-> Paste this into your coding agent:
+> Paste this into Claude Code, Codex, Gemini CLI, OpenCode or omp:
 >
 > ```text
 > Install the tailnet-preview skill (npx skills add mickey/tailhome --skill tailnet-preview -g), then show me this app on my phone.
 > ```
 
-You need Tailscale on Linux or macOS, MagicDNS, HTTPS Certificates, Python 3.9+ and the Tailscale CLI. To install yourself with Node 22.20+:
+Or install the skill yourself (requires Node 22.20+ for the installer; the skill itself uses Python 3.9+ and the Tailscale CLI on Linux or macOS):
 
 ```sh
 npx skills add mickey/tailhome --skill tailnet-preview -g
 ```
 
-Restart your agent so it finds the skill, then ask: **Can I see this on my phone?** It asks which HTTPS ports it may use and leaves existing mappings alone.
+Restart your agent so it loads the skill, then ask:
 
-Your phone needs Tailscale access. Keep the publishing machine awake and each app instance running. Ask the agent to remove previews when done; they never expire automatically and are never public.
+- *"Can I see this on my phone?"*
+- *"Publish three versions of the new pricing hero so I can compare them."*
+- *"Remove the landing previews."*
+
+On first run, the agent checks your Tailscale setup and asks which HTTPS ports it may use (such as `8443-8452`), leaving existing mappings untouched. Each preview gets a private `https://<machine>.<tailnet>.ts.net:<port>/` link and a `/.well-known/tailhome.json` card so `http://home/` groups versions side by side with `A`, `B`, `C` badges.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
   <img alt="A coding agent in a terminal publishes three versions of a landing page hero and lists their links; on a phone, home/ shows them at the top as Landing redesign, 3 versions, with badges A, B and C." src="docs/agents.png">
 </picture>
 
-See the [skill guide](skills/tailnet-preview/README.md) for other installs and [preview setup](docs/setup.md#preview-ports) to list previews in tailhome.
+Previews are private to your tailnet and stay live while your machine is awake and the dev server is running. See the [skill guide](skills/tailnet-preview/README.md) for Claude Code, omp and Gemini CLI plugin commands, an `AGENTS.md` / `CLAUDE.md` snippet to make previews automatic, and [preview discovery setup](docs/setup.md#preview-ports).
 
-## Customize tiles
+## Share an app publicly
 
-Use [`config/overrides.yaml`](docs/customize.md#overrides) to rename, group, reorder or hide tiles and change icons and links. If DockTail publishes your containers, its labels can [set descriptions and groups](docs/integrations.md#docktail).
+Need to show an app to someone outside your tailnet? Click the globe on its tile. tailhome gives it a public HTTPS address through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) for 1 hour, 8 hours, 24 hours, 7 days or until you stop it. Stopping closes public access at once.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/sharing-dark.png">
+  <img alt="home/ with six app tiles. Immich shows a filled globe and the line Public sharing: Immich - until 18:00. A dialog reads Immich is public, with its public link, a Copy button, Public until 18:00, Shared by alice@example.com at 14:00, and Close and Stop sharing buttons." src="docs/sharing.png" width="880">
+</picture>
+
+Set `TAILHOME_SHARE_ADMINS` to enable sharing for the admins you name. It needs an OAuth client that can create auth keys and a few lines in your tailnet policy. See [public sharing](docs/setup.md#public-sharing).
+
+## What appears on `home/`
+
+| Source | How it works |
+|---|---|
+| **[Tailscale Services](https://tailscale.com/docs/features/tailscale-services)** | Discovered automatically from the local netmap. Add a read-only [OAuth client](docs/setup.md#set-up-oauth) to list every Service on the tailnet with tags as groups and descriptions on tiles. Non-web Services (SSH, Postgres, Redis) appear under **Other** with one-click copy. |
+| **Device apps** | Any tailnet device serving HTTPS on port `443` with a valid certificate appears as a tile with live health status. Container publishers like [DockTail](docs/integrations.md#docktail), TSDProxy, tsbridge and ScaleTail work out of the box. |
+| **Agent & dev previews** | Any app on [`TAILHOME_PREVIEW_PORTS`](docs/setup.md#preview-ports) (or on port `443` with a `preview: true` card) appears at the top under **Previews** while its server responds, and disappears cleanly when stopped. |
+
+Need custom names, groups, icons or ordering? Drop an optional [`config/overrides.yaml`](docs/customize.md#overrides) next to your config.
 
 ## Documentation
 
-[Setup and configuration](docs/setup.md) · [Apps, previews and page controls](docs/apps.md) · [Customization and JSON endpoints](docs/customize.md) · [Integrations](docs/integrations.md) · [Troubleshooting](docs/troubleshooting.md) · [Contributing](CONTRIBUTING.md)
+| Guide | Covers |
+|---|---|
+| [Setup and configuration](docs/setup.md) | Docker Compose, binaries, systemd, OAuth (`svc:home`), public sharing via Funnel, preview ports and environment variables |
+| [Apps, previews and page controls](docs/apps.md) | How Services, devices and preview cards (`/.well-known/tailhome.json`) are discovered, health indicators and container publishers |
+| [Customization and JSON API](docs/customize.md) | `overrides.yaml` reference, `/go/<name>` shortcuts, `/api/list.json` and `/api/services.json` |
+| [Integrations](docs/integrations.md) | Ready-to-paste widgets for Homepage and Glance, plus DockTail container labels |
+| [`tailnet-preview` skill](skills/tailnet-preview/README.md) | Agent installation, plugins, automatic `AGENTS.md` rules and troubleshooting |
+| [Troubleshooting](docs/troubleshooting.md) | Fixes for DNS, certificates, OAuth, missing tiles and Serve permissions |
 
 ## Security and privacy
 
-Everyone who can open tailhome sees the same catalog, including app and preview names, descriptions, addresses and status, on the page and JSON endpoints. App access rules do not hide this metadata. Hiding tiles does not restrict access.
+`tailhome` has no login of its own and no analytics or telemetry. Your [Tailscale access policy](https://tailscale.com/docs/features/access-control) controls who can open `home/` and each individual app.
 
-Device discovery checks reachable devices, including other members' laptops. OAuth needs **Services: Read**; add **Auth Keys: Write** only to join without a login link.
+Everyone who can open `tailhome` sees the same catalog (app and preview names, descriptions, addresses and up/down status) on the page and JSON endpoints, even for apps their own Tailscale policy blocks them from opening. Hiding a tile in `overrides.yaml` removes it from the page, not from the network.
 
-tailhome has no analytics or telemetry. Logs can contain the login link: open it yourself and do not share it. Cookies are shared across HTTPS ports on the same hostname.
+Device discovery probes reachable devices on your tailnet, including other members' laptops (`TAILHOME_DEVICES=off` disables this). Listing Services with tags and descriptions only needs OAuth `Services: Read`; add `Auth Keys: Write` only for unattended enrollment or [opt-in public sharing](docs/setup.md#public-sharing).
 
-Review [network requests, icon privacy and Tailscale diagnostic logs](docs/setup.md#security-and-network-requests). Report vulnerabilities through [SECURITY.md](SECURITY.md).
+Browsers share cookies across all ports on the same hostname, including `HttpOnly` cookies. Only publish trusted code on machines where you stay signed in to other apps. Logs can contain the initial login link: open it yourself and do not share it.
+
+See [Security and network requests](docs/setup.md#security-and-network-requests) for icon CDN privacy and Tailscale diagnostic logs, and [SECURITY.md](SECURITY.md) to report vulnerabilities.
+
+## Status
+
+Actively maintained; pre-1.0 releases (`v0.x`) ship container images (`linux/amd64`, `linux/arm64`, `linux/arm/v7`) and static binaries for Linux, macOS and Windows.
 
 ## Is it any good?
 

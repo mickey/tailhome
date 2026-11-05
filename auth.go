@@ -81,7 +81,7 @@ func enrolled(dir string) (bool, error) {
 // mintAuthKey creates the one-off key tsnet joins with. Doing it here rather
 // than through tsnet's ClientSecret keeps it cancellable and bounded: tsnet
 // mints with an internal context that Ctrl-C can't reach.
-func mintAuthKey(ctx context.Context, api *tsapi.Client, tag string, timeout time.Duration) (string, error) {
+func mintAuthKey(ctx context.Context, api *tsapi.Client, tag string, timeout time.Duration, ephemeral bool) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var req tsapi.CreateKeyRequest
@@ -89,9 +89,21 @@ func mintAuthKey(ctx context.Context, api *tsapi.Client, tag string, timeout tim
 	req.ExpirySeconds = 600
 	req.Capabilities.Devices.Create.Preauthorized = true
 	req.Capabilities.Devices.Create.Tags = []string{tag}
+	req.Capabilities.Devices.Create.Ephemeral = ephemeral
 	key, err := api.Keys().CreateAuthKey(ctx, req)
 	if err != nil {
 		return "", err
+	}
+	// Home enrollment retains its historical defaults. Public enrollment must
+	// never silently receive a persistent, reusable, or differently tagged key.
+	if req.Capabilities.Devices.Create.Ephemeral {
+		if key == nil || key.Key == "" {
+			return "", shareErr("key_capabilities_invalid")
+		}
+		caps := key.Capabilities.Devices.Create
+		if !caps.Ephemeral || caps.Reusable || !caps.Preauthorized || len(caps.Tags) != 1 || caps.Tags[0] != tag {
+			return "", shareErr("key_capabilities_invalid")
+		}
 	}
 	return key.Key, nil
 }

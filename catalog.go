@@ -83,10 +83,12 @@ type Entry struct {
 	Check string `json:"check,omitempty"`
 	// Unverified marks a device admitted under TAILHOME_DEVICE_INSECURE_TLS_TAGS
 	// whose certificate failed verification.
-	Unverified bool `json:"unverified,omitempty"`
+	Unverified bool       `json:"unverified,omitempty"`
+	Share      *ShareTile `json:"-"`
 
 	order  int
 	nodeID tailcfg.StableNodeID
+	hidden bool
 	probe  []string // candidate URLs for a Service on an unusual port
 }
 
@@ -103,6 +105,7 @@ type View struct {
 	Error          string    `json:"error,omitempty"`
 	Notices        []Notice  `json:"notices,omitempty"`
 	PreviewEnabled bool      `json:"-"`
+	hidden         []Entry
 }
 
 // all flattens the page in order, one Entry per tile: a web Service's
@@ -143,6 +146,8 @@ type Catalog struct {
 	InsecureTLSTags []string                       // TAILHOME_DEVICE_INSECURE_TLS_TAGS; members with one skip certificate verification
 	DeviceProber    *DeviceProber                  // required when Devices is set
 	PreviewPorts    []uint16
+	IncludeHidden   bool       // Sharing retains hidden targets without rendering them.
+	OnRefresh       func(View) // Successful listings only; called after publication.
 
 	refreshMu      sync.Mutex        // serializes refreshes; guards discovery state, lastAttempt, warned
 	detected       map[string]string // Service name → URL that once answered HTTP
@@ -208,13 +213,17 @@ func (c *Catalog) refresh(ctx context.Context, manual bool) {
 		return
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if err != nil {
 		log.Printf("refresh: %v", err)
 		c.view.Error = err.Error()
+		c.mu.Unlock()
 		return
 	}
 	c.view = view
+	c.mu.Unlock()
+	if c.OnRefresh != nil {
+		c.OnRefresh(view)
+	}
 }
 
 func (c *Catalog) warnOnce(key, format string, args ...any) {
@@ -255,10 +264,11 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 			continue
 		}
 		o := overrides[name]
-		if o.Hidden {
+		if o.Hidden && !c.IncludeHidden {
 			continue
 		}
 		e := newEntry(name, c.DNSSuffix, svc, o)
+		e.hidden = o.Hidden
 		if o.Icon == "" && c.Icons != nil {
 			e.Icon, e.IconDark = c.Icons.url(name)
 		} else {
@@ -312,6 +322,13 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 	groups := map[string][]Entry{}
 	currentPermanent := 0
 	for _, e := range entries {
+		if e.probe != nil && e.URL != "" {
+			detected[e.Name] = e.URL
+		}
+		if e.hidden {
+			view.hidden = append(view.hidden, e)
+			continue
+		}
 		if c.NoCDNIcons {
 			if onIconCDN(e.Icon) {
 				e.Icon = "" // the tile shows its first letter
@@ -344,9 +361,6 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 			row := e
 			row.URL, row.Description = "", "" // the tile already shows the description
 			view.Other = append(view.Other, row)
-		}
-		if e.probe != nil {
-			detected[e.Name] = e.URL
 		}
 		groups[e.Group] = append(groups[e.Group], e)
 	}

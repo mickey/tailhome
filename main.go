@@ -88,6 +88,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	shareCfg, err := parseShareConfig(os.Getenv("TAILHOME_SHARE_ADMINS"))
+	if err != nil {
+		return err
+	}
 	log.Printf("tailhome %s", version)
 	if devicesOn == "off" && len(previewPorts) != 0 {
 		log.Printf("TAILHOME_PREVIEW_PORTS is ignored while TAILHOME_DEVICES=off")
@@ -120,7 +124,7 @@ func run() error {
 		if !isEnrolled && os.Getenv("TS_AUTHKEY") == "" && os.Getenv("TS_AUTH_KEY") == "" {
 			// A client with Auth Keys: Write joins by itself. A read-only client
 			// joins through the login link: an admin who opens it applies the tag.
-			key, err := mintAuthKey(ctx, oauth("auth_keys"), tag, time.Minute)
+			key, err := mintAuthKey(ctx, oauth("auth_keys"), tag, time.Minute, false)
 			switch {
 			case err == nil:
 				srv.AuthKey = key
@@ -228,10 +232,46 @@ func run() error {
 	if icons != nil {
 		icons.Loaded = func() { catalog.Refresh(ctx) } // show the matched icons now, not at the next refresh
 	}
+	var sharing *shareWeb
+	manager, err := newShareManager(dir, shareCfg.Enabled, func(record ShareRecord) (shareRuntime, error) {
+		var mint func(context.Context) (string, error)
+		if shareCfg.Enabled {
+			mint = func(keyCtx context.Context) (string, error) {
+				if clientID == "" {
+					return "", shareErr("oauth_missing")
+				}
+				client := &tsapi.Client{Tailnet: os.Getenv("TAILHOME_TAILNET"), Auth: oauthClient{ctx: keyCtx, id: clientID, secret: clientSecret, scopes: []string{"auth_keys"}, timeout: 30 * time.Second}}
+				return mintAuthKey(keyCtx, client, shareTag, time.Minute, true)
+			}
+		}
+		homeID := ""
+		if st.Self != nil {
+			homeID = string(st.Self.ID)
+		}
+		return newShareRuntime(record.Binding, record.Hostname, filepath.Join(dir, "shares", "nodes", record.ID), dnsSuffix, homeID, mint), nil
+	})
+	if err != nil {
+		err = fmt.Errorf("%s: %w", shareStorageMessage, err)
+		if shareCfg.Enabled {
+			return err
+		}
+		log.Printf("sharing disabled: %v", err)
+	}
+	if manager != nil {
+		defer manager.Close()
+	}
+	if manager != nil && shareCfg.Enabled {
+		if !apiMode {
+			manager.unavailable = shareOAuthMessage
+		}
+		catalog.IncludeHidden = true
+		catalog.OnRefresh = func(view View) { manager.catalogUpdated(view, dnsSuffix, self) }
+		sharing = &shareWeb{manager: manager, who: lc, admins: shareCfg.Admins, host: fqdn, service: self}
+	}
 	go catalog.Run(ctx, refresh)
 
 	errc := make(chan error, 2)
-	go func() { errc <- serve(httpsLn, NewHandler(catalog, title)) }()
+	go func() { errc <- serve(httpsLn, newHandler(catalog, title, sharing)) }()
 	go func() { errc <- serve(httpLn, redirectTo("https://"+fqdn)) }()
 	select {
 	case <-ctx.Done():

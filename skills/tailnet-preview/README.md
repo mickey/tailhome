@@ -1,6 +1,6 @@
 # tailnet-preview
 
-Get a private HTTPS link to your local app with [Tailscale Serve](https://tailscale.com/kb/1312/serve). A laptop and a phone are enough; no server or tailhome needed.
+Publish private HTTPS links to local dev servers from your coding agent with [Tailscale Serve](https://tailscale.com/kb/1312/serve), and optionally group side-by-side versions (`A`, `B`, `C`) in [`tailhome`](../../README.md). A laptop and a phone are enough; no server or `tailhome` instance required.
 
 ## Requirements
 
@@ -23,7 +23,9 @@ npx skills add mickey/tailhome --skill tailnet-preview -g
 
 Reload or restart your client, then ask:
 
-> Can I see this on my phone?
+- *"Can I see this on my phone?"*
+- *"Publish three versions of the pricing hero so I can compare them."*
+- *"Remove the landing previews."*
 
 The agent asks you to approve HTTPS ports, suggesting 8443-8452. To save your approval, set `TAILNET_PREVIEW_PORTS` in the agent's launch environment. Port 443 must be free and needs explicit approval.
 

@@ -27,6 +27,11 @@
 | `home/` stops after months | Restart and open the new login link; see [key expiry](https://tailscale.com/docs/features/access-control/key-expiry). |
 | Override ignored or permission denied | Check names, path and [file permissions](customize.md#overrides). |
 | Serve returns consent or permission errors | Follow [preview setup](setup.md#publish-a-direct-preview); the skill must not sign in, use sudo or change tailnet policy. |
+| Public share globe missing or disabled | Set `TAILHOME_SHARE_ADMINS` to your exact Tailscale login name and finish [sharing setup](setup.md#public-sharing). Previews and apps with unverified TLS cannot be shared. |
+| Share error `scope_denied` | Add OAuth Auth Keys: Write for `tag:tailhome-share`. |
+| Share error `key_permission_denied` | Make `tag:tailhome` an owner of `tag:tailhome-share`. |
+| Share error `funnel_denied` | Add `funnel` for `tag:tailhome-share` in `nodeAttrs`. |
+| Share error `certificate_rate_limited` | Wait before retrying; new shares do not reset the limit. |
 
 ## A permanent device app moved into previews
 
