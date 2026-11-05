@@ -96,7 +96,8 @@ When `TAILHOME_URL` is set in the agent's environment, the skill refreshes `home
 - Select **refresh** to update the list. A discovery error leaves the last list visible.
 - Select an Other row to copy connection details; customize these with a `copy` override.
 - Use the **Appearance** menu to choose a mode and a palette, saved per browser.
-- With [public sharing](setup.md#public-sharing) on, admins use a tile's globe to share the app or stop a share. A filled globe means the app is public. Shares keep running and stay in the summary if their tile is hidden later. Previews cannot be shared.
+- With [public sharing](setup.md#public-sharing) on, admins use a tile's globe to share an app or preview. A filled globe means it is public. Preview shares default to 1 hour and last at most 24 hours. Shares keep running and stay in the summary if their tile is hidden later.
+- Public preview shares check the card endpoint every 10 seconds, not the app. Card changes or removal stop sharing at the next check; unreachable endpoints stop it after three failed checks, about 30 seconds. With a separate card mount or no card, stopping only the dev server leaves the share up with 502 errors; a different app on the same port without republishing stays public until the share ends.
 - On phones, use Safari's Add to Home Screen or Chrome's Install app.
 - Open `home/go/jellyfin` by name, or `/go/devbox:8443` for a specific device port.
 

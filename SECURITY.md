@@ -21,6 +21,9 @@ Setting `TAILHOME_SHARE_ADMINS` enables sharing for those exact Tailscale login 
 - Only WebSocket upgrades are allowed.
 - Client-supplied identity and forwarding headers are stripped. Funnel visitors' public IP is sent as `X-Forwarded-For`; tailnet callers' IPs are never sent.
 - Apps see connections from the share node. Never share apps that trust identity headers, skip login for tailnet peers or lock out users by source IP.
+- Preview shares last at most 24 hours and check only the card endpoint every 10 seconds. Card changes or removal stop sharing at the next check; unreachable endpoints stop it after three failed checks, about 30 seconds.
+- With a separate card mount (the skill's default) or no card, stopping only the dev server leaves the share up with 502 errors. A different app on the same port without republishing stays public until the share ends.
+- Running preview shares do not follow catalog changes to tags, overrides or preview ports. They continue until expiry, Stop, removal or a card change.
 - The OAuth secret can create pre-approved, Funnel-capable nodes with access to everything granted to `tag:tailhome-share`, outside tailhome's controls.
 - Run without root or a Docker socket, and protect the secret, state directory and backups, including certificates.
 - In Service mode, tailhome trusts `Tailscale-User-Login` on a loopback listener. Local users or processes in the same host or container network namespace can impersonate admins; keep the listener private and untrusted processes out.

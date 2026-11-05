@@ -59,27 +59,28 @@ type ShareBinding struct {
 	Port     uint16 `json:"port"`
 }
 type ShareRecord struct {
-	ID             string       `json:"id"`
-	Revision       string       `json:"revision"`
-	OperationID    string       `json:"operationID,omitempty"`
-	TargetID       string       `json:"targetID"`
-	Label          string       `json:"label"`
-	Hostname       string       `json:"hostname"`
-	URL            string       `json:"url,omitempty"`
-	Binding        ShareBinding `json:"-"`
-	State          string       `json:"state"`
-	CreatedAt      time.Time    `json:"createdAt"`
-	CreatedBy      string       `json:"createdBy,omitempty"`
-	ExpiresAt      *time.Time   `json:"expiresAt"`
-	LastReviewedAt time.Time    `json:"lastReviewedAt"`
-	LastReviewedBy string       `json:"lastReviewedBy,omitempty"`
-	NextReviewAt   time.Time    `json:"nextReviewAt"`
-	StoppedAt      *time.Time   `json:"stoppedAt,omitempty"`
-	StoppedBy      string       `json:"stoppedBy,omitempty"`
-	Reason         string       `json:"reason,omitempty"`
-	CleanupPending bool         `json:"cleanupPending"`
-	Phase          string       `json:"-"`
-	StartedAt      time.Time    `json:"-"`
+	ID                 string       `json:"id"`
+	Revision           string       `json:"revision"`
+	OperationID        string       `json:"operationID,omitempty"`
+	TargetID           string       `json:"targetID"`
+	Label              string       `json:"label"`
+	Hostname           string       `json:"hostname"`
+	URL                string       `json:"url,omitempty"`
+	Binding            ShareBinding `json:"-"`
+	PreviewFingerprint string       `json:"-"`
+	State              string       `json:"state"`
+	CreatedAt          time.Time    `json:"createdAt"`
+	CreatedBy          string       `json:"createdBy,omitempty"`
+	ExpiresAt          *time.Time   `json:"expiresAt"`
+	LastReviewedAt     time.Time    `json:"lastReviewedAt"`
+	LastReviewedBy     string       `json:"lastReviewedBy,omitempty"`
+	NextReviewAt       time.Time    `json:"nextReviewAt"`
+	StoppedAt          *time.Time   `json:"stoppedAt,omitempty"`
+	StoppedBy          string       `json:"stoppedBy,omitempty"`
+	Reason             string       `json:"reason,omitempty"`
+	CleanupPending     bool         `json:"cleanupPending"`
+	Phase              string       `json:"-"`
+	StartedAt          time.Time    `json:"-"`
 }
 
 func (r *ShareRecord) live() bool { return r.State == "starting" || r.State == "public" }
@@ -99,6 +100,7 @@ type ShareTile struct {
 	Origin   string `json:"origin"`
 	Reason   string `json:"reason"`
 	Label    string `json:"label"`
+	Preview  bool   `json:"preview"`
 	entryKey string
 	hidden   bool
 }
@@ -140,6 +142,9 @@ type shareManager struct {
 	now              func() time.Time
 	afterFunc        func(time.Duration, func()) *time.Timer
 	removeNodeDir    func(string) error
+	checkPreview     func(context.Context) (string, error)
+	previewTick      <-chan time.Time
+	refreshCards     func()
 	err, unavailable string
 	closing          bool
 	workers          sync.WaitGroup
@@ -153,12 +158,10 @@ func randomShareID() string {
 	return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(bytes[:]))
 }
 func targetForEntry(e Entry, suffix, self string) shareTarget {
-	t := shareTarget{Tile: ShareTile{Label: e.Label, entryKey: e.Source + ":" + e.Name, hidden: e.hidden}}
+	t := shareTarget{Tile: ShareTile{Label: e.Label, entryKey: e.Source + ":" + e.Name, hidden: e.hidden, Preview: e.Temporary}}
 	binding := ShareBinding{Kind: e.Source}
 	u, err := url.Parse(e.URL)
 	switch {
-	case e.Temporary:
-		t.Tile.Reason = "Sharing previews is not available yet."
 	case e.Unverified:
 		t.Tile.Reason = "This app cannot be shared: its HTTPS certificate is not verified."
 	case err != nil || u == nil || (u.Scheme != "https" && u.Scheme != "http"):
@@ -190,6 +193,9 @@ func targetForEntry(e Entry, suffix, self string) shareTarget {
 	if t.Tile.Reason == "" && (binding.FQDN != strings.ToLower(e.Host) || !strings.HasSuffix(binding.FQDN, "."+suffix) || binding.Port == 0 || !servesPort(e.Ports, int(binding.Port)) || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (binding.Kind != "service" && binding.Kind != "device") || (binding.Kind == "device" && binding.NodeID == "") || (binding.Kind == "service" && binding.Service == self) || strings.HasPrefix(binding.FQDN, "public-")) {
 		t.Tile.Reason = "This app cannot be shared: the destination is not an approved advertised app endpoint."
 	}
+	if t.Tile.Reason == "" && e.Temporary && binding.Scheme != "https" {
+		t.Tile.Reason = "This preview cannot be shared: only verified HTTPS device endpoints are supported."
+	}
 	if shareUnsafePath(u.EscapedPath()) {
 		t.Tile.Reason = "This app cannot be shared: its base path is unsafe."
 	}
@@ -199,6 +205,9 @@ func targetForEntry(e Entry, suffix, self string) shareTarget {
 	}
 	t.Tile.TargetID = targetIDForBinding(binding)
 	t.Tile.Revision = t.Tile.TargetID
+	if e.Temporary {
+		t.Tile.Revision = previewFingerprint(binding, e.cardRaw)
+	}
 	t.Tile.Origin = e.URL
 	t.Binding = binding
 	return t
@@ -340,6 +349,15 @@ func shareMessage(r ShareRecord) string {
 			return "Public sharing expired at " + r.ExpiresAt.Format(time.RFC1123) + "."
 		}
 	case "stopped":
+		if r.Reason == "preview_changed" {
+			return "This preview changed, so sharing stopped. Share it again if needed."
+		}
+		if r.Reason == "preview_gone" {
+			return "This preview was removed, so sharing stopped."
+		}
+		if r.Reason == "preview_unreachable" {
+			return "This preview was removed or can't be reached, so sharing stopped."
+		}
 		if r.Reason == "sharing_disabled" {
 			return "Sharing disabled on this instance. Re-enable sharing and confirm a new share to publish again."
 		}

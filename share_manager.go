@@ -43,63 +43,80 @@ func (m *shareManager) create(target, revision, duration, operation, by string) 
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closing {
-		return shareErr("unavailable")
-	}
-	if m.unavailable != "" {
-		return shareErr("oauth_missing")
-	}
-	var previous *ShareRecord
-	count := 0
-	for _, record := range m.records {
-		if record.OperationID == operation {
-			return nil
+	refreshed := false
+	for {
+		if m.closing {
+			return shareErr("unavailable")
 		}
-		if record.live() || record.CleanupPending {
-			count++
+		if m.unavailable != "" {
+			return shareErr("oauth_missing")
 		}
-		if record.TargetID == target {
-			if record.live() || record.CleanupPending {
-				return shareErr("revision")
+		var previous *ShareRecord
+		count := 0
+		for _, record := range m.records {
+			if record.OperationID == operation {
+				return nil
 			}
-			previous = record
+			if record.live() || record.CleanupPending {
+				count++
+			}
+			if record.TargetID == target {
+				if record.live() || record.CleanupPending {
+					return shareErr("revision")
+				}
+				previous = record
+			}
 		}
-	}
-	approved, ok := m.targets[target]
-	if !ok || approved.Tile.Revision != revision {
-		return shareErr("revision")
-	}
-	if approved.Tile.Reason != "" {
-		return &shareError{code: "ineligible", detail: approved.Tile.Reason}
-	}
-	if count >= 8 {
-		return shareErr("capacity")
-	}
-	now := m.now().UTC()
-	id := randomShareID()
-	for m.records[id] != nil {
-		id = randomShareID()
-	}
-	record := &ShareRecord{ID: id, Revision: randomShareID(), OperationID: operation, TargetID: target, Label: approved.Tile.Label, Hostname: "public-" + id, Binding: approved.Binding, State: "starting", CreatedAt: now, CreatedBy: by, LastReviewedAt: now, LastReviewedBy: by, NextReviewAt: now.Add(30 * 24 * time.Hour)}
-	if elapsed != 0 {
-		deadline := now.Add(elapsed)
-		record.ExpiresAt = &deadline
-	}
-	if previous != nil {
-		delete(m.records, previous.ID)
-	}
-	m.records[id] = record
-	if err := m.saveLocked(); err != nil {
-		delete(m.records, id)
+		approved, ok := m.targets[target]
+		if !ok || approved.Tile.Revision != revision {
+			return shareErr("revision")
+		}
+		if approved.Tile.Preview && (elapsed == 0 || elapsed > 24*time.Hour) {
+			return shareErr("invalid_request")
+		}
+		if approved.Tile.Reason != "" {
+			return &shareError{code: "ineligible", detail: approved.Tile.Reason}
+		}
+		if count >= 8 {
+			return shareErr("capacity")
+		}
+		if approved.Tile.Preview && m.refreshCards != nil && !refreshed {
+			refresh := m.refreshCards
+			m.mu.Unlock()
+			refresh()
+			m.mu.Lock()
+			refreshed = true
+			continue
+		}
+		now := m.now().UTC()
+		id := randomShareID()
+		for m.records[id] != nil {
+			id = randomShareID()
+		}
+		record := &ShareRecord{ID: id, Revision: randomShareID(), OperationID: operation, TargetID: target, Label: approved.Tile.Label, Hostname: "public-" + id, Binding: approved.Binding, State: "starting", CreatedAt: now, CreatedBy: by, LastReviewedAt: now, LastReviewedBy: by, NextReviewAt: now.Add(30 * 24 * time.Hour)}
+		if approved.Tile.Preview {
+			record.PreviewFingerprint = approved.Tile.Revision
+		}
+		if elapsed != 0 {
+			deadline := now.Add(elapsed)
+			record.ExpiresAt = &deadline
+		}
 		if previous != nil {
-			m.records[previous.ID] = previous
+			delete(m.records, previous.ID)
 		}
-		shareLog(id, "failure", err)
-		return err
+		m.records[id] = record
+		if err := m.saveLocked(); err != nil {
+			delete(m.records, id)
+			if previous != nil {
+				m.records[previous.ID] = previous
+			}
+			shareLog(id, "failure", err)
+			return err
+		}
+		shareLog(id, "start", nil)
+		m.launchLocked(record)
+		return nil
 	}
-	shareLog(id, "start", nil)
-	m.launchLocked(record)
-	return nil
 }
 func (m *shareManager) launchLocked(record *ShareRecord) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -159,6 +176,9 @@ func (m *shareManager) provision(ctx context.Context, record ShareRecord, active
 		return
 	}
 	m.mu.Unlock()
+	if record.PreviewFingerprint != "" && !m.startPreviewWatch(ctx, record, runtime, resolve) {
+		return
+	}
 	gateway, err := newShareGateway(record.Binding, host, runtime.Dial, resolve, record.ExpiresAt)
 	if err != nil {
 		m.setupFailed(record.ID, active, err)
@@ -390,7 +410,7 @@ func terminalShareState(reason string) string {
 	switch reason {
 	case "expired":
 		return "expired"
-	case "", "admin_stop", "sharing_disabled", "target_changed":
+	case "", "admin_stop", "sharing_disabled", "target_changed", "preview_changed", "preview_gone", "preview_unreachable":
 		return "stopped"
 	default:
 		return "failed"
@@ -474,10 +494,12 @@ func (m *shareManager) resumeLocked() {
 		if r.Binding.Kind == "service" && m.undetected[r.Binding.Service] {
 			continue
 		}
-		target, ok := m.targets[r.TargetID]
-		if !ok || target.Binding != r.Binding || !target.eligible {
-			_ = m.endLocked(r, "", "target_changed")
-			continue
+		if r.PreviewFingerprint == "" {
+			target, ok := m.targets[r.TargetID]
+			if !ok || target.Binding != r.Binding || !target.eligible {
+				_ = m.endLocked(r, "", "target_changed")
+				continue
+			}
 		}
 		if m.active[r.ID] == nil {
 			shareLog(r.ID, "start", nil)

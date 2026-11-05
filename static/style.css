@@ -129,8 +129,11 @@ code { font: 13px ui-monospace, monospace; }
 @media (max-width: 520px) { .appearance { inset: 12px 12px auto; width: auto; max-height: calc(100dvh - 24px); } }
 /* Public sharing is rendered only in opt-in mode. */
 .share-tile { display: flex; align-items: center; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
-.share-tile > .tile { flex: 1; align-self: stretch; border: 0; }
-.share-tile:has(> .tile:hover) { border-color: var(--muted); }
+.share-tile > .tile { flex: 1; align-self: stretch; border: 0; background: transparent; }
+.share-tile:has(> .tile:hover, > .tile:focus-visible) { border-color: var(--muted); }
+.share-tile:has(> .tile:active) { background: color-mix(in srgb, var(--fg) 5%, var(--card)); }
+.share-tile:has(> .tile:focus-visible) { outline: 2px solid var(--fg); outline-offset: 3px; }
+.share-tile > .tile:focus-visible { outline: none; }
 .share-slot { display: flex; align-items: center; flex: none; width: 48px; min-height: 36px; }
 .share-globe { display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin: 0 12px 0 0; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
 .share-slot[hidden] { display: none; }

@@ -344,7 +344,7 @@ func TestShareAdminBoundary(t *testing.T) {
 }
 func TestShareEligibility(t *testing.T) {
 	base := Entry{Name: "app", Source: "service", Host: "app.test.ts.net", URL: "https://app.test.ts.net/", Ports: []string{"tcp:443"}}
-	for _, change := range []func(*Entry){func(e *Entry) { e.Temporary = true }, func(e *Entry) { e.URL = "https://external.example/" }, func(e *Entry) { e.URL = "http://127.0.0.1/" }, func(e *Entry) { e.Unverified = true }, func(e *Entry) { e.URL = "https://app.test.ts.net:444/" }} {
+	for _, change := range []func(*Entry){func(e *Entry) { e.URL = "https://external.example/" }, func(e *Entry) { e.URL = "http://127.0.0.1/" }, func(e *Entry) { e.Unverified = true }, func(e *Entry) { e.URL = "https://app.test.ts.net:444/" }} {
 		entry := base
 		change(&entry)
 		if targetForEntry(entry, "test.ts.net", "svc:home").eligible {

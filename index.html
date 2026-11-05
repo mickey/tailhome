@@ -149,6 +149,7 @@
     <label><input class="sr" type="radio" name="share-duration" value="until-stopped">Until stopped</label>
   </div></fieldset>
   <p id="share-deadline" class="detail" role="status"></p>
+  <p id="share-preview-note" class="detail" hidden>Sharing stops if this preview is removed or its card changes. If another app starts on this preview's port without republishing, it stays public until sharing ends.</p>
   <p class="detail">The hostname and tailnet name will appear in public certificate records, even after sharing stops. Scanners watch these records; expect visits within minutes. The random name is not secret.</p>
   <p class="share-error error" role="alert" hidden></p>
   <div class="share-buttons"><button class="share-button" type="button" data-share-close autofocus>Cancel</button><button class="share-button primary" id="share-create" type="button">Share publicly</button></div>
@@ -159,7 +160,7 @@
   <p id="share-next-step" class="detail" hidden>Dismiss removes this record. Sharing again requires fresh confirmation.</p>
   <button class="snippet" id="share-copy" type="button"><code id="share-public-url"></code><span class="copied" data-idle="Copy" data-done="Copied">Copy</span></button>
   <p class="detail" id="share-expiry"></p>
-  <p id="share-dns-note" class="detail" hidden>If the link doesn't open yet, wait a minute: the public address is new.</p>
+  <p id="share-dns-note" class="detail" hidden>If the link doesn't open yet, wait a few minutes: public DNS for a new address can take up to 10 minutes.</p>
   <p class="detail" id="share-attribution" hidden></p>
   <p class="detail" id="share-review" hidden></p>
   <p class="share-error error" role="alert" hidden></p>

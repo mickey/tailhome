@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"crypto/tls"
@@ -176,7 +175,7 @@ func (p *DeviceProber) check(parent context.Context, d *deviceCheck, manual bool
 			// An unverifiable listener cannot supply display metadata, even manually.
 			s.card = nil
 		} else {
-			card, result := fetchCard(ctx, client, strings.TrimSuffix(base, "/")+cardPath)
+			card, result, _ := fetchCard(ctx, client, strings.TrimSuffix(base, "/")+cardPath)
 			s.applyCard(card, result, manual, !wasUp && !d.candidate)
 			if result != "ok" && result != "absent" {
 				d.diagnostic = result
@@ -214,35 +213,35 @@ func upstreamGone(ctx context.Context, client *http.Client, url string) bool {
 	return resp.StatusCode == http.StatusBadGateway
 }
 
-func fetchCard(ctx context.Context, client *http.Client, url string) (*previewCard, string) {
+func fetchCard(ctx context.Context, client *http.Client, url string) (*previewCard, string, int) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, "HTTPS request failed"
+		return nil, "HTTPS request failed", 0
 	}
 	req.Header.Set("User-Agent", userAgent())
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "HTTPS request failed"
+		return nil, "HTTPS request failed", 0
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 4097))
 		if err != nil {
-			return nil, "HTTPS request failed"
+			return nil, "HTTPS request failed", resp.StatusCode
 		}
-		card, err := parseCard(bytes.NewReader(body))
+		card, err := parseCard(body)
 		if err != nil {
-			return nil, "invalid"
+			return nil, "invalid", resp.StatusCode
 		}
 		if card == nil {
-			return nil, "absent"
+			return nil, "absent", resp.StatusCode
 		}
-		return card, "ok"
+		return card, "ok", resp.StatusCode
 	case 404, 410:
-		return nil, "absent"
+		return nil, "absent", resp.StatusCode
 	default:
-		return nil, fmt.Sprintf("HTTP %d", resp.StatusCode)
+		return nil, fmt.Sprintf("HTTP %d", resp.StatusCode), resp.StatusCode
 	}
 }
 
@@ -372,6 +371,7 @@ func (c *Catalog) entryFor(check deviceCheck, name, bare string) Entry {
 	e.Label = cmp.Or(check.override.Label, fallback)
 	icon := bare
 	if state.card != nil {
+		e.cardRaw = state.card.raw
 		e.Label = cmp.Or(check.override.Label, state.card.Title, fallback)
 		e.Description = cmp.Or(check.override.Description, state.card.Description)
 		icon = cmp.Or(state.card.Icon, bare)

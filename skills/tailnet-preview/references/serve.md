@@ -2,274 +2,136 @@
 
 ## Installation and updates
 
-Install the whole reviewed `skills/tailnet-preview/` directory on the app's host, with access to its loopback server and connected Tailscale CLI. This independent tailhome skill is not an official Tailscale product.
+Install the full `skills/tailnet-preview/` directory on the machine hosting the app (requires Linux or macOS, Python 3.9+ with no third-party packages, and a connected Tailscale CLI). Keep `scripts/tailnet_preview.py` next to `SKILL.md` and invoke it by its absolute path:
 
-Use Python 3.9+ on Linux or macOS; no package dependencies are required. Check `python3 --version` in the agent's environment.
+```sh
+python3 /absolute/skill/scripts/tailnet_preview.py ...
+```
 
-Follow the client's documented skill directory and activation method, then reload or restart the client. Keep the helper beside SKILL.md and resolve its absolute path:
-
-`python3 /absolute/skill/scripts/tailnet_preview.py ...`
-
-Update the full directory from reviewed or pinned source. Keep one canonical copy with links to it and private ownership state outside it. Never distribute state with the skill or claim you validated an untested client.
+Keep ownership state outside the skill directory (`~/.local/state/tailnet-preview/` by default) and never bundle state files when copying or updating the skill.
 
 <details>
 <summary>Client paths and installer</summary>
 
-Use `~/.agents/skills` for omp, Codex, OpenCode or Gemini CLI. Check other clients' documented paths. For Claude Code, symlink `~/.claude/skills/tailnet-preview` to the canonical directory. Review an existing installation or link's owner and target before replacing it.
-
-For project installations, use `.agents/skills/` or `.claude/skills/`. With omp, you can also use `~/.omp/agent/skills/tailnet-preview/` or `.omp/skills/tailnet-preview/`.
-
-To use the optional installer, run `npx skills add mickey/tailhome --skill tailnet-preview -g`. Select clients interactively or with `-a claude-code -a codex`. Only the installer requires Node.
-
-Choose installer targets carefully:
-
-- There is no `-a omp` target. Use `-a pi` or `-a codex` to install into the shared `~/.agents/skills`, which omp reads.
-- `-a universal -g` writes `~/.config/agents/skills`, not `~/.agents/skills`.
-
-Activate the skill with `/tailnet-preview` in Claude Code, `$tailnet-preview` or `/skills` in Codex, or `/skill:tailnet-preview` in omp when skill commands are enabled. For other clients, load SKILL.md and its bundled references through their documented mechanism.
+- **Shared skills folder (`~/.agents/skills`):** Used by omp, Codex, OpenCode and Gemini CLI.
+- **Claude Code:** Symlink `~/.claude/skills/tailnet-preview` to the canonical directory (check any existing link's owner and target before replacing).
+- **Project-local installation:** Use `.agents/skills/` or `.claude/skills/` (or `~/.omp/agent/skills/tailnet-preview/` and `.omp/skills/tailnet-preview/` in omp).
+- **`npx skills` installer (requires Node 22.20+):**
+  ```sh
+  npx skills add mickey/tailhome --skill tailnet-preview -g
+  ```
+  Select clients interactively or pass `-a claude-code -a codex`. Note: there is no `-a omp` target (use `-a pi` or `-a codex` to write to `~/.agents/skills`), and `-a universal -g` writes to `~/.config/agents/skills`.
+- **Slash commands:** `/tailnet-preview` in Claude Code, `$tailnet-preview` or `/skills` in Codex, or `/skill:tailnet-preview` in omp.
 
 </details>
 
 <details>
 <summary>Python and platform limits</summary>
 
-Do not use native Windows. Do not assume Windows localhost and a WSL Tailscale daemon are interchangeable; WSL publication has not been established.
-
-If Python is missing, ask the machine's owner to install a current Python 3 from python.org or their existing package manager, then restart the agent. If uv is already in use, you can also run `uv run scripts/tailnet_preview.py ...` from the skill directory.
-
-For untrusted-certificate errors on python.org macOS builds, ask the machine's owner to run `Install Certificates.command`. Keep certificate verification enabled.
+- **No native Windows or WSL:** Do not use native Windows or assume Windows `localhost` and a WSL Tailscale daemon are interchangeable.
+- **Missing Python:** Ask the machine's owner to install Python 3.9+ from python.org or their package manager, then restart the agent (or use `uv run scripts/tailnet_preview.py ...` if `uv` is already installed).
+- **macOS certificate errors:** On python.org macOS builds, ask the owner to run `Install Certificates.command`. Never disable TLS verification.
 
 </details>
 
 ### Find the Tailscale CLI
 
-The helper tries these CLI locations in order:
+The helper checks these locations in order:
 
-1. `TAILSCALE`, if supplied.
-2. An executable on PATH.
-3. `/Applications/Tailscale.app/Contents/MacOS/Tailscale`, the App Store app's bundled CLI.
+1. `TAILSCALE` environment variable (must be a single executable path or name, never a shell command or arguments; an invalid value fails without fallback).
+2. `tailscale` on `PATH`.
+3. `/Applications/Tailscale.app/Contents/MacOS/Tailscale` (macOS App Store bundle; the helper sets `TAILSCALE_BE_CLI=1` automatically for macOS subprocesses).
 
-If you set `TAILSCALE`, use one executable path or name, never a shell command, alias or argv fragment. An invalid value fails without fallback.
-
-If needed, set `TAILSCALE=/Applications/Tailscale.app/Contents/MacOS/Tailscale` in the environment that launches the agent. Restart GUI-launched agents after environment changes. Use the installed variant. Do not install another daemon or switch variants for this skill.
-
-Use a dry run to see the chosen executable. For macOS subprocesses, the helper sets `TAILSCALE_BE_CLI=1` without changing its parent environment. The standalone app's owner can install `/usr/local/bin/tailscale` through Settings > CLI integration.
-
-See the official [CLI documentation](https://tailscale.com/docs/reference/tailscale-cli) and [macOS variants](https://tailscale.com/docs/concepts/macos-variants).
+If the CLI is missing on macOS, the owner can either set `TAILSCALE=/Applications/Tailscale.app/Contents/MacOS/Tailscale` in the agent's launch environment and restart the agent, or enable **Settings > CLI integration** in the standalone macOS app. Never install another daemon or switch Tailscale variants yourself. See the [Tailscale CLI docs](https://tailscale.com/docs/reference/tailscale-cli) and [macOS variants](https://tailscale.com/docs/concepts/macos-variants).
 
 ### Read preflight results
 
-Run `preflight` before asking approval. Include permission warnings and blockers in one approval message. Add optional `--ports` to report free slots under publication's eligibility rules. Get approval before publishing even when ports are free.
+Run `preflight --ports <range>` before asking approval and combine any blockers or warnings into a single message to the user.
 
-<details>
-<summary>Preflight checks and cookie scope</summary>
-
-Preflight reads the CLI version, status, optional Linux operator preferences and Serve configuration. It creates no ownership state and makes no Tailscale changes.
-
-`machine_ports` lists the ports this machine name already serves through Serve, including your previews. It excludes Services, which have their own names. Treat `null` as a failure to read Serve.
-
-Account for cookie sharing before publishing:
-
-- Browsers send this name's cookies to every port, including `HttpOnly` cookies.
-- Preview servers receive cookies from current and past apps on this name.
-- Cookies set for the whole tailnet domain reach Services too.
-- Preflight cannot see apps serving ports themselves or browser-stored cookies.
-
-Preflight exits nonzero only for a missing CLI, disconnected or logged-out backend, or unavailable HTTPS. Read warnings for other uncertain checks. HTTPS counts as available when top-level `CertDomains` in `tailscale status --json` lists certificate domains, which requires HTTPS certificates to be enabled. Do not rely on MagicDNS alone or treat this as a live certificate issuance test.
-
-On Linux, root or the configured `OperatorUser` likely has Serve write permission; otherwise the helper reports `serve_write:"denied_likely"`. Ask the owner to run `sudo tailscale set --operator=$USER` once; never run it yourself. Give the same fix for access-denied Serve errors. On macOS with open source `tailscaled`, only accounts outside the `admin` group need it. The helper never elevates itself.
-
-Treat `unknown` as unconfirmed write permission. The helper reports it when preferences are unreadable or the CLI comes from a macOS GUI variant.
-
-</details>
+- **Exit code:** Exits nonzero when the CLI is missing, the backend is logged out/stopped, or HTTPS certificates are unavailable (`CertDomains` empty in `tailscale status --json`).
+- **Linux operator permission (`serve_write: "denied_likely"`):** Ask the owner to run `sudo tailscale set --operator=$USER` once; never run `sudo` yourself. (On macOS with open-source `tailscaled`, only non-`admin` users need `--operator`.) Treat `serve_write: "unknown"` as unconfirmed until publishing.
+- **Occupied ports and cookie scope (`machine_ports`):** Lists HTTPS ports already served on this machine name (excluding Tailscale Services, which use their own names; `null` means Serve config could not be read). Because browsers send a hostname's cookies (including `HttpOnly` cookies) to every port on that hostname, warn the user before publishing untrusted code or when `machine_ports` is non-empty/unknown.
 
 ## Host, approval and direct links
 
-For direct links alone, omit `--home` and trusted `TAILHOME_URL`. Both are optional on publish, status and check. Do not search for or install tailhome.
-
-A tailnet administrator must enable MagicDNS and HTTPS certificates. Policy must let reviewers reach the approved ports. Do not treat CLI connectivity as proof that Serve is ready.
-
-If Serve returns a consent URL or permission error, preserve the actual stderr. Ask the user or administrator to finish approved setup, then retry. Do not authenticate, provision, elevate or change policy.
-
-Ask reviewers to connect Tailscale before opening links and use an account approved for the publishing machine and each preview's HTTPS port. Keep the host awake, connected and running the app. Do not rely on a background Serve mapping to host or restart it. Do not claim host-side verification proves viewer connectivity or policy.
-
-<details>
-<summary>Discovery and outside-tailnet reviewers</summary>
-
-The person running tailhome configures `TAILHOME_PREVIEW_PORTS` separately for extra-port discovery. Different hosts can reuse port numbers. For different pools, that person configures the launcher with all distinct extra ports, up to 32 total. Keep publication approval, access policy and launcher discovery separate.
-
-A nonempty `TAILHOME_DEVICE_TAGS` filter excludes untagged laptops; an empty filter includes untagged devices. Do not suggest tagging a personal laptop for discovery. Tags replace its user identity and change applicable policy. See [preview setup](https://github.com/mickey/tailhome/blob/main/docs/setup.md#preview-ports).
-
-For outside-tailnet reviewers, arrange an administrator-approved device share or invitation. This skill grants no access and provides no public fallback.
-
-</details>
+- **Direct links without `tailhome`:** Omit `--home` and `TAILHOME_URL` when `tailhome` is not used. Never search for or install `tailhome`.
+- **Consent URLs and permission errors:** If Serve outputs a consent URL or access-denied error, report the exact `stderr` to the user so they can complete it, then retry.
+- **Reviewer access and outside-tailnet users:** Reviewers must connect Tailscale and have ACL access to the host and HTTPS port. For outside-tailnet reviewers, the administrator must arrange a Tailscale device share or invite; this skill never uses Funnel or changes ACLs.
+- **`tailhome` discovery settings:** `TAILHOME_PREVIEW_PORTS` (up to 32 extra ports) is configured by the `tailhome` operator and does not grant publishing permission. Never suggest tagging a personal laptop (`TAILHOME_DEVICE_TAGS`), because tags replace user identity and change ACL policy.
 
 ## App startup
 
-Get startup permission to run the project's existing development command in a persistent session managed by your agent client. Keep it running after your response. Get permission beyond HTTPS-port approval for app startup, dependency installation, migrations and unrelated services.
+Get explicit permission before starting a dev server, installing dependencies, running migrations, or launching extra services. Keep each comparison version on its own independent worktree/checkout and loopback port.
 
-Keep each version's upstream stable with separate worktrees/checkouts or supported per-instance configuration. Do not rely on branch names alone to create independent runtimes.
-
-For a static HTML directory with no project startup command, get explicit permission to run a static server before using:
+For a static HTML directory with no project dev command, get permission before running:
 
 ```sh
-python3 -m http.server <authorized-loopback-port> --bind 127.0.0.1 --directory <absolute-copy-directory>
+python3 -m http.server <loopback-port> --bind 127.0.0.1 --directory <absolute-directory>
 ```
 
 ## Card schema
 
-Supply exactly one non-null UTF-8 JSON object, at most 4096 bytes, with only trailing whitespace. Serve it at `/.well-known/tailhome.json` on each preview. Reserve that path and all paths beneath it for the card.
-
-Write plain text and, optionally, a dashboard-icons slug. Never include HTML, credentials or source paths. Put the visible difference first in titles; describe differences and inspection tasks in descriptions. Keep workspace directories and internal review or iteration labels out of titles, descriptions and sets unless the user asked reviewers to see them.
+Serve one UTF-8 JSON object (at most 4096 bytes, plain text only, no HTML, secrets, workspace paths or unrequested internal labels) at `/.well-known/tailhome.json`:
 
 | Field | Accepted value |
 | --- | --- |
-| `title` | Optional string, at most 60 code points |
-| `description` | Optional string, at most 140 code points |
-| `set` | Optional string, at most 60 code points |
-| `icon` | Optional string, at most 64 ASCII characters matching `[a-z0-9-]+` |
-| `version` | Optional string, one or two ASCII letters/digits |
-| `preview` | Boolean, never null; the helper writes `true` |
-
-For a comparison, use the same exact short user-facing `set` for every version, such as `Product pricing` or `Product heroes`. Give each a distinct badge, such as `A`, `B`, `C` or `1`, `2`, `3`, and name its approach in the title.
+| `title` | Optional string, up to 60 code points (put the visible difference first) |
+| `description` | Optional string, up to 140 code points (what differs and what to inspect) |
+| `set` | Optional string, up to 60 code points (exact same string for all versions in a comparison) |
+| `icon` | Optional string, up to 64 ASCII characters matching `[a-z0-9-]+` |
+| `version` | Optional string, 1 or 2 ASCII letters/digits (`A`, `B`, `C` or `1`, `2`, `3`) |
+| `preview` | Boolean, never null (`tailnet_preview.py` sets `true` automatically) |
 
 <details>
-<summary>Validation and comparison matching</summary>
+<summary>Validation rules</summary>
 
-Reject duplicate keys, including unknown keys. Ignore other unknown fields.
-
-Reject Unicode control characters and U+2028/U+2029 before trimming string fields, including leading or trailing tabs, newlines and those separators. Then trim ordinary Unicode whitespace and treat empty results as absent. Reject the whole card if a known field is invalid. Ignore Content-Type because Serve text mounts return `text/plain; charset=utf-8`.
-
-Match comparisons within one host using exact trimmed text. Use badges to identify alternatives, not results. Keep run uniqueness in the non-secret local ID. Distinguish unrelated comparisons with meaningful user-facing set qualifiers.
-
-Assume everyone who can open home can read every listed title, description, address and status, regardless of app access. Treat hiding a preview as a change for all viewers, not a way to revoke access.
-
-A card does not configure discovery ports, grant access, create redirects, set an expiry or authorize cleanup.
+- Rejects duplicate keys, control characters, and `U+2028`/`U+2029`. Leading/trailing whitespace is trimmed, and empty strings count as absent.
+- Comparisons are grouped within a single host by exact trimmed `set` text. Keep run uniqueness in the `--id` flag, not by polluting the user-facing `set` title.
+- A card does not configure discovery ports, grant access, create redirects, set an expiry or authorize cleanup.
 
 </details>
 
 ## Verification and home confirmation
 
-Choose `--route`, a successful 2xx `--expected-status` and identifying `--expect-text` for the intended screen. Put identifying text within the first 1 MiB of the app response; text beyond that probe limit counts as missing. Without `--expect-text`, use the status code alone to decide.
+Pass `--route`, a 2xx `--expected-status`, and an identifying `--expect-text` that appears in the first 1 MiB of the server's raw HTTP response (probes do not execute JavaScript and cannot see text added only by client-side scripts; card probes read at most 4097 bytes to enforce the 4096-byte limit).
 
-For handoff, put each title/badge, verified clickable HTTPS URL and inspection task on one line. Report results as described in [Confirm home listing](#confirm-home-listing).
-
-<details>
-<summary>Probe limits and transports</summary>
-
-Choose probe text that appears without running JavaScript; probes cannot check text added only by JavaScript. Card probes read at most 4097 bytes to enforce the 4096-byte limit. Probes follow no redirects and use normal certificate verification.
-
-For exact Self or Peer DNS names and service DNS names in `ExtraRecords`, the helper sends HTTP/1.1 through the chosen CLI's `tailscale nc`. TLS uses the URL FQDN for SNI and certificate hostname verification. This works with TUN and userspace networking without OS MagicDNS resolution. Other hosts use normal urllib transport.
-
-The first HTTPS card check retries transport failures for up to 90 seconds while tailscaled obtains its certificate. Make sure Python trusts public certificate authorities.
-
-</details>
-
-### Report failures
-
-Report verification failures from `error` and `warnings`, including each warning's original probe stage, route, transport, elapsed time and underlying error. Include certificate and transport errors. Do not replace diagnostics with "See warnings". Keep TLS verification and authority boundaries intact.
-
-For failed publication, report `compensation_completed` and `ownership_record_remains`. Compensation removes only unchanged owned mounts. Mark the version incomplete and say whether recoverable state remains. Never report retained state as a successful preview.
-
-Keep other successful previews and their app sessions running. Status never removes mounts. Compensation does not authorize app shutdown; get separate permission.
-
-### Confirm home listing
-
-Report `published`, `app_verified`, `card_verified` and `listed` separately. For `listed:null`, explain that no home was configured and hand off direct links. Run home-backed status checks sequentially.
-
-Do not treat `listed:false` as proof that the app is inaccessible. If direct checks pass, say "Published; home listing not confirmed." Keep the independently verified direct preview usable.
-
-<details>
-<summary>Refresh and match rules</summary>
-
-With a trusted home URL, the helper makes at most three refresh attempts, at least eleven seconds apart after the first, with eight-second request timeouts. If a refresh POST times out, the helper still checks the catalog. Keep launcher and publishing-host clocks within a few seconds of each other.
-
-The helper requires a fresh `updated` timestamp and no catalog error in `/api/services.json`. In `/api/list.json`, it requires the exact URL, description, set and version, plus the label when the recorded card has a title. Absent optional description, set and version match empty strings. Do not accept a refresh response or 303 alone; the shared cooldown may skip card work.
-
-</details>
+- **Transport & certificate wait:** For local/peer MagicDNS names and `ExtraRecords` Service names, the helper probes HTTP/1.1 over `tailscale nc` with full TLS SNI and certificate verification (retrying up to 90 seconds on first check while `tailscaled` provisions the certificate). Probes do not follow redirects.
+- **Reporting failures (`Report failures`):** Always report `error` and `warnings` with the probe stage, route, transport, elapsed time and underlying error (never summarize as `"See warnings"`). If publication fails, report `compensation_completed` and `ownership_record_remains` to indicate whether owned mounts were rolled back and whether a recovery record was kept.
+- **Confirming `tailhome` listing (`Confirm home listing`):** Report `published`, `app_verified`, `card_verified` and `listed` separately. Run `--home` status checks sequentially: with a trusted home URL, the helper makes up to 3 refresh attempts (at least 11 seconds apart after the first, with 8-second request timeouts; keep host and launcher clocks within a few seconds of each other), requiring a fresh `updated` timestamp and no catalog error in `/api/services.json` plus exact metadata in `/api/list.json` (do not accept a refresh response or HTTP 303 alone, as the shared cooldown may skip card work). If direct checks pass with `listed: false`, report `"Published; home listing not confirmed."` and hand off the working direct URL.
 
 ## Local state and set selectors
 
-Use unique IDs and distinct set names for unrelated comparisons on this OS account. List and clean only this account's recorded publications. If separate OS accounts share a Tailscale daemon, serialize publishing externally or use disjoint approved pools; the accounts have separate locks.
+Ownership records and locks live in `~/.local/state/tailnet-preview/` (or `$XDG_STATE_HOME/tailnet-preview/`, mode `0700`/`0600`) and belong to the current OS account:
 
-Supply approved pools as comma-separated decimal ports/ranges. Include at most 32 distinct ports; there is no built-in default. Get explicit approval for port 443. `8443-8452` provides ten host-wide slots before occupied or ineligible ports are excluded. Capacity is shared across sets; upstream ports are separate from Serve ports.
-
-Plain `list` needs neither `--set` nor a remote catalog. To select a set, use `list --set NAME`. The helper validates and trims the selector, then matches the recorded card's exact case-sensitive set. Membership comes from local records, not the catalog.
-
-Choose either `cleanup --id ID` or `cleanup --set NAME`; they are mutually exclusive. Report each selected ID's removal outcome and warnings, plus the aggregate selected count. Report an empty selection as an explicit no-op.
-
-Never treat set labels or remote catalogs as ownership. Preserve other sets and foreign mounts. Leave apps, worktrees and packages intact during cleanup; they require separate permission.
-
-<details>
-<summary>State storage and recovery</summary>
-
-Use an absolute `XDG_STATE_HOME` if you set it. Ownership state defaults to `~/.local/state/tailnet-preview/`, outside the installation, with directories mode 0700 and files mode 0600. Before changing Serve, the helper records its plan, then updates the record after observing the result. On failure, it removes only unchanged mounts it owns.
-
-Records belong to this OS account, not a Tailscale user or team. Different machines can reuse IDs and sets. Neither tailhome nor another Serve tool shares this helper's cleanup registry or lock.
-
-Set cleanup snapshots local selections under the lock, checks current node identity/FQDN and applies single-ID mount checks. Conflicts return nonzero while independent members continue. Use `--dry-run` to print per-ID commands without removal. The helper keeps changed members recorded for recovery.
-
-</details>
-
-<details>
-<summary>List fields and app checks</summary>
-
-Plain `list` and `list --set NAME` entries in `previews[]` keep all ownership-record fields, including raw recovery `card`, and add decoded `title`, `description`, `set` and `version`. Missing optional metadata is `null`. Malformed cards produce warnings without invented metadata or discarded records.
-
-Read each entry's `app` as the result of one request to the recorded local address and route, with a 3-second timeout:
-
-- `ok`: the response matches the recorded status and text.
-- `stopped`: nothing answers.
-- `different`: something else answers, including a non-HTTP listener.
-- `null`: the app answered too slowly, the recorded address or route is unusable, or the record was never fully published. A dev server may answer too slowly while recompiling.
-
-Check for a different app now reachable at an old preview link.
-
-Unreadable JSON or malformed cards are skipped with a warning on stderr and retained for recovery.
-
-</details>
+- **`list` and `list --set NAME`:** Reads local ownership records (never remote catalogs) and probes each recorded local upstream with a 3-second timeout, reporting `app` as:
+  - `ok`: response matches the recorded status and text.
+  - `stopped`: nothing answers.
+  - `different`: another app or response answers on that port (including a non-HTTP listener).
+  - `null`: the app answered too slowly (for example, a dev server recompiling), the recorded address or route is unusable, or the record was never fully published.
+- **`cleanup --id ID` vs `cleanup --set NAME`:** Mutually exclusive. Checks current node identity, FQDN and Serve mounts under the lock, removing `--set-path=/.well-known/tailhome.json off` and `--set-path=/ off` on the recorded `--https` port only if unchanged. Foreign mounts and modified paths are left untouched and kept on disk for recovery. Use `--dry-run` to preview removal commands.
 
 ## Source-checked CLI mechanics
 
-Use only completely free approved slots, including when this publisher owns an occupied port. Do not claim global atomicity or safe concurrent mutation by noncooperating tools.
-
-<details>
-<summary>Reviewed CLI behavior</summary>
-
-These mechanics were reviewed against Tailscale v1.104.1 (`cmd/tailscale/cli/serve_v2.go` and `ipn/serve.go`), not in a live publication or macOS test.
-
-Stored card `Text` is a JSON string containing the complete card, without `text:`. The helper passes `text:` plus encoded JSON as one argv element, never through shell interpolation.
-
-Do not infer from App Store filesystem restrictions or remote-proxy warnings that text cards or literal-loopback proxies are unsupported.
-
-Background root/card additions preserve unrelated handlers, but ordinary Serve can clear Funnel.
-
-The helper removes `--set-path=/.well-known/tailhome.json off`, then `--set-path=/ off`, each with the recorded explicit `--https` port. Never omit `--set-path`; without it, `off` removes every mount on the port. Removing only root leaves the card. Cleanup rereads state because removing a missing handler produces an error.
-
-The advisory lock covers only this helper; external Serve writers can race its reads and writes. The helper refuses unknown schemas and Service Tun mode.
-
-</details>
+Reviewed against Tailscale v1.104.1 (`cmd/tailscale/cli/serve_v2.go` and `ipn/serve.go`). The helper acquires a per-account advisory lock, uses only completely free approved ports, passes `text:<json>` as a single argv element without shell interpolation, and removes only explicit `--set-path` mounts (never whole-port `off` or `serve reset`). If separate OS accounts share one `tailscaled`, coordinate externally or assign disjoint port pools.
 
 ## Troubleshooting boundaries
 
-Match the symptom before making changes. Keep host validation and certificate verification so a wrong host or untrusted endpoint cannot appear healthy. Never use Funnel, public exposure, whole-port removal, `serve reset`, or tailnet identity, policy or approval changes as a workaround.
+Match the symptom before changing anything. Never work around errors by disabling TLS/host checks, using Funnel, resetting Serve, or changing tailnet policy.
 
 | Symptom | Check or owner action |
 | --- | --- |
-| `serve config denied` | Follow the operator-permission fix in [Read preflight results](#read-preflight-results). |
-| Slow first HTTPS check or certificate failure | Issuance may still be running. Retry after the [first-check wait](#verification-and-home-confirmation); check Python CA trust. |
-| Phone or laptop cannot find the name | Check its Tailscale connection and MagicDNS use. |
-| Browser timeout | Ask an administrator to grant approved device access to this machine and port. |
-| 502 or wrong app | Check whether the upstream stopped or moved; mappings outlive apps. Plain `list` reports each preview's `app` result. |
-| Dev server rejects the preview host with 403 or "Blocked request" | Add the exact preview hostname to the framework's allowlist, such as Vite [`server.allowedHosts`](https://vite.dev/config/server-options.html#server-allowedhosts) or Next.js [`allowedDevOrigins`](https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins). |
-| Direct link works, but `home/` omits it | Ask the person running tailhome to check `TAILHOME_PREVIEW_PORTS` and refresh confirmation. |
-| `Waiting for another tailnet-preview command on this account to finish...` on stderr | Another helper command (publish, list, status, check or cleanup) from this OS account holds the lock. Let it finish; do not delete the lock file. |
+| `serve config denied` | Ask the owner to run `sudo tailscale set --operator=$USER` once ([preflight](#read-preflight-results)). |
+| Slow first HTTPS check or certificate failure | Wait for initial certificate issuance (up to 90s) and retry; check Python CA trust on macOS. |
+| Phone or laptop cannot resolve the hostname | Check that Tailscale is connected and MagicDNS is enabled on the viewing device. |
+| Browser connection timeout | Ask a tailnet admin to allow access to this machine and HTTPS port in ACLs. |
+| `502 Bad Gateway` or wrong app opens | The local dev server stopped or another app took its loopback port (`list` shows `stopped` or `different`). |
+| Dev server returns `403` / `"Blocked request"` | Add the `.ts.net` hostname to Vite [`server.allowedHosts`](https://vite.dev/config/server-options.html#server-allowedhosts) or Next.js [`allowedDevOrigins`](https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins). |
+| Direct link works, but `home/` omits it | Check `TAILHOME_PREVIEW_PORTS` on `tailhome` and click **refresh** on `home/`. |
+| `Waiting for another tailnet-preview command on this account to finish...` | Another helper command on this OS account holds the lock; let it finish and do not delete the lock file. |
 
 <details>
 <summary>Redirects and unsafe workarounds</summary>
 
-Fix exact-FQDN allowlists and HMR through supported project settings. Inspect redirects within the intended HTTPS origin and explicitly verify the target. Treat arbitrary catalog URLs as data, not authorized probe destinations.
-
-A 502 or Host 403 fails the app check even when TLS works. Do not treat a home listing as proof of app health; home checks connectivity, not pages.
+Fix exact-FQDN allowlists and HMR through supported project settings. Inspect redirects within the intended HTTPS origin and explicitly verify the target. Treat arbitrary catalog URLs as data, not authorized probe destinations. A 502 or Host 403 fails the app check even when TLS works; do not treat a `home/` listing as proof of app health.
 
 </details>

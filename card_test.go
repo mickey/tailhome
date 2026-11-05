@@ -14,8 +14,12 @@ func TestParseCard(t *testing.T) {
 		`{}` + strings.Repeat(" ", 4094),
 	} {
 		t.Run(body[:min(len(body), 60)], func(t *testing.T) {
-			if _, err := parseCard(strings.NewReader(body)); err != nil {
+			card, err := parseCard([]byte(body))
+			if err != nil {
 				t.Fatal(err)
+			}
+			if card == nil || string(card.raw) != body {
+				t.Fatalf("raw card differs from response: %+v", card)
 			}
 		})
 	}
@@ -28,12 +32,12 @@ func TestParseCard(t *testing.T) {
 		"{\"title\":\"\xff\"}", `{}` + strings.Repeat(" ", 4095),
 	} {
 		t.Run("invalid "+body[:min(len(body), 60)], func(t *testing.T) {
-			if _, err := parseCard(strings.NewReader(body)); err == nil {
-				t.Fatalf("accepted %q", body)
+			if card, err := parseCard([]byte(body)); err == nil || card != nil {
+				t.Fatalf("invalid card %q: %+v %v", body, card, err)
 			}
 		})
 	}
-	card, err := parseCard(strings.NewReader(`{"title":"  Hello\t","set":" Landing ","version":" A "}`))
+	card, err := parseCard([]byte(`{"title":"  Hello\t","set":" Landing ","version":" A "}`))
 	if err != nil || card.Title != "Hello" || card.Set != "Landing" || card.Version != "A" {
 		t.Fatalf("trimming: %+v %v", card, err)
 	}
@@ -41,7 +45,7 @@ func TestParseCard(t *testing.T) {
 
 func TestParseCardNonObjectsAreAbsent(t *testing.T) {
 	for _, body := range []string{"", " \n\t", " \n<!doctype html><title>App</title>", "null", "[]", "true", strings.Repeat("<html>", 1000)} {
-		card, err := parseCard(strings.NewReader(body))
+		card, err := parseCard([]byte(body))
 		if card != nil || err != nil {
 			t.Fatalf("non-card %q: %+v %v", body[:min(len(body), 60)], card, err)
 		}

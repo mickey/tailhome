@@ -19,14 +19,13 @@ type previewCard struct {
 	Preview     bool
 	Set         string
 	Version     string
+
+	// raw is the exact validated response body, immutable after parsing.
+	raw []byte
 }
 
 // parseCard rejects ambiguous objects before interpreting presentation fields.
-func parseCard(r io.Reader) (*previewCard, error) {
-	body, err := io.ReadAll(io.LimitReader(r, 4097))
-	if err != nil {
-		return nil, err
-	}
+func parseCard(body []byte) (*previewCard, error) {
 	// An upstream HTML fallback (or any non-object response) means no card.
 	if trimmed := bytes.TrimSpace(body); len(trimmed) == 0 || trimmed[0] != '{' {
 		return nil, nil
@@ -99,6 +98,7 @@ func parseCard(r io.Reader) (*previewCard, error) {
 			return nil, fmt.Errorf("invalid preview type")
 		}
 	}
+	card.raw = body
 	return card, nil
 }
 

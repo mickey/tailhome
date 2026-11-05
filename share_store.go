@@ -13,7 +13,8 @@ import (
 
 type storedShare struct {
 	ShareRecord
-	Binding ShareBinding `json:"binding"`
+	Binding            ShareBinding `json:"binding"`
+	PreviewFingerprint string       `json:"previewFingerprint,omitempty"`
 }
 type shareLedger struct {
 	Version int                     `json:"version"`
@@ -52,6 +53,7 @@ func openShareStore(root string) (*shareStore, error) {
 	for _, stored := range store.ledger.Shares {
 		record := stored.ShareRecord
 		record.Binding = stored.Binding
+		record.PreviewFingerprint = stored.PreviewFingerprint
 		record.TargetID = targetIDForBinding(record.Binding)
 		if !validShareID(record.ID) || record.Hostname != "public-"+record.ID || store.ledger.Records[record.ID] != nil || record.CreatedAt.IsZero() || record.NextReviewAt.IsZero() {
 
@@ -70,7 +72,7 @@ func openShareStore(root string) (*shareStore, error) {
 func (s *shareStore) Save(records map[string]*ShareRecord) error {
 	ledger := shareLedger{Version: 1, Shares: make([]storedShare, 0, len(records))}
 	for _, r := range records {
-		ledger.Shares = append(ledger.Shares, storedShare{ShareRecord: *r, Binding: r.Binding})
+		ledger.Shares = append(ledger.Shares, storedShare{ShareRecord: *r, Binding: r.Binding, PreviewFingerprint: r.PreviewFingerprint})
 	}
 	data, err := json.MarshalIndent(ledger, "", "  ")
 	if err != nil {

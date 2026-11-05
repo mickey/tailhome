@@ -86,10 +86,11 @@ type Entry struct {
 	Unverified bool       `json:"unverified,omitempty"`
 	Share      *ShareTile `json:"-"`
 
-	order  int
-	nodeID tailcfg.StableNodeID
-	hidden bool
-	probe  []string // candidate URLs for a Service on an unusual port
+	order   int
+	nodeID  tailcfg.StableNodeID
+	cardRaw []byte // immutable validated card body; nil when no valid card exists
+	hidden  bool
+	probe   []string // candidate URLs for a Service on an unusual port
 }
 
 type Group struct {

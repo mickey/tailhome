@@ -46,6 +46,7 @@ tailhome
 ```
 
 Add `$(go env GOPATH)/bin` to `PATH` if needed, then follow the [Compose login steps](#docker-compose). Run `tailhome -version` to check the installed version.
+
 ## Set up OAuth
 
 OAuth adds Service groups and descriptions, and serves home through `svc:home`. You need tailnet admin access.
@@ -87,7 +88,7 @@ Optional Keys → Auth Keys → Write for `tag:tailhome` enables automatic enrol
 
 ## Public sharing
 
-Off by default. Admins use a tile's globe to share an app through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel); `home/` stays private. Each share has its own ephemeral node at `https://public-<id>.<tailnet>.ts.net`, with paths matching the app's paths. Up to 8 shares can run at once; previews and sharing passwords are unsupported.
+Off by default. Admins use a tile's globe to share an app through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel); `home/` stays private. Each share has its own ephemeral node at `https://public-<id>.<tailnet>.ts.net`, with paths matching the app's paths. Up to 8 shares can run at once; sharing passwords are unsupported.
 
 ### Enable
 
@@ -105,16 +106,24 @@ Off by default. Admins use a tile's globe to share an app through [Tailscale Fun
    }
    ```
 
-   Device apps need a grant from `tag:tailhome-share` to their tag and port. You can also add `autogroup:admin` as a tag owner; `tag:tailhome` must remain an owner when the OAuth client uses that tag. The last grant lets tailnet members open share links.
+   Device apps need a grant from `tag:tailhome-share` to their tag, or their owner's login name, and port. You can also add `autogroup:admin` as a tag owner; `tag:tailhome` must remain an owner when the OAuth client uses that tag. The last grant lets tailnet members open share links.
 3. Set `TAILHOME_SHARE_ADMINS=alice@example.com,bob@example.com`, then restart. Use exact Tailscale login names, separated by commas. A nonempty list enables sharing; empty or unset keeps it off. Admin controls require a direct connection to `home/`, without a reverse proxy.
 
 Anyone on the internet can reach the shared app. Check its login first and read [SECURITY.md](../SECURITY.md#public-sharing).
 
-- Shares last 1 h, 8 h, 24 h (default), 7 days or until stopped. No-end-date shares get 30-day review reminders; reviews never extend expiry.
+Previews can be shared for 1 h (default), 8 h or 24 h, with or without a metadata card. The card endpoint is checked every 10 seconds: a changed, added or removed card stops sharing at the next check. Removing the whole preview, an unreachable port or a TLS error stops it after three failed checks, about 30 seconds. If the card is a separate Serve mount (the skill's default), or there is no card, stopping only the dev server leaves the share up with 502 errors. A different app started on the same port without republishing stays public until the share ends.
+
+Preview hosts need a grant from `tag:tailhome-share` to the host and its ports. Use the host's tag, or its owner's login name for an untagged laptop, for example:
+```jsonc
+{"src": ["tag:tailhome-share"], "dst": ["tag:devbox"], "ip": ["tcp:8443-8452"]}
+{"src": ["tag:tailhome-share"], "dst": ["alice@example.com"], "ip": ["tcp:8443-8452"]}
+```
+
+- App shares last 1 h, 8 h, 24 h (default), 7 days or until stopped. No-end-date shares get 30-day review reminders; reviews never extend expiry.
 - Stop or expiry closes connections and starts node removal. Hiding a tile does not stop a share. Removing one admin leaves existing shares running if other admins remain.
-- Restarts reuse unexpired shares after discovery confirms the app. Offline ephemeral nodes may be removed after 30 to 60 minutes; keep `/data` persistent to reuse cached certificates.
+- Restarts reuse unexpired app shares after discovery confirms the app; preview shares first check their saved card through the share node. Offline ephemeral nodes may be removed after 30 to 60 minutes; keep `/data` persistent to reuse cached certificates.
 - Restarting with no sharing admins removes saved nodes using cached state, without OAuth or public listeners, and retries failed removal.
-- Each new share uses certificate quota (50 per tailnet per 7 days); deleting state does not reset it. Public DNS can take up to 10 minutes; tailhome does not probe reachability.
+- Each new share uses certificate quota (50 per tailnet per 7 days); deleting state does not reset it. Public DNS can take up to 10 minutes; tailhome does not probe the public URL.
 
 ## Preview ports
 
@@ -144,6 +153,7 @@ systemctl enable --now tailhome
 ```
 
 Put environment variables in `/etc/tailhome/env` and [tile overrides](customize.md#overrides) in `/etc/tailhome/overrides.yaml` (readable by the service user). State lives in `/var/lib/tailhome`. Find the login link with `journalctl -u tailhome`.
+
 ## Environment variables
 
 Recreate containers or restart binaries after changes. Separate tags with commas or whitespace.

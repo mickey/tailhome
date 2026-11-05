@@ -266,6 +266,7 @@ func run() error {
 		}
 		catalog.IncludeHidden = true
 		catalog.OnRefresh = func(view View) { manager.catalogUpdated(view, dnsSuffix, self) }
+		manager.refreshCards = func() { catalog.RefreshManualIfOlder(ctx, 0) }
 		sharing = &shareWeb{manager: manager, who: lc, admins: shareCfg.Admins, host: fqdn, service: self}
 	}
 	go catalog.Run(ctx, refresh)

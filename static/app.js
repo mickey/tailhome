@@ -136,7 +136,7 @@ if (document.getElementById("sharing")) {
     return (date.toDateString() === new Date().toDateString() ? "" : calendarDate(value) + " ") + time;
   }
   const until = record => record.expiresAt ? "until " + shortDate(record.expiresAt) : "until an admin stops it";
-  const freshPublicAddress = record => record?.public && Date.now() - Date.parse(record.startedAt) < 5 * 60 * 1000;
+  const freshPublicAddress = record => record?.public && Date.now() - Date.parse(record.startedAt) < 10 * 60 * 1000;
   const isStopping = record => record?.cleanupPending && (record.state === "stopped" || record.state === "expired");
   function stateText(record, detailed = false) {
     if (isStopping(record)) return "stopping" + (detailed ? " public sharing" : "");
@@ -177,7 +177,15 @@ if (document.getElementById("sharing")) {
     operationID = crypto.randomUUID();
     byID("share-confirm-title").textContent = "Share " + target.label + " publicly?";
     byID("share-origin").textContent = target.origin;
-    confirm.querySelector('input[value="24h"]').checked = true;
+    confirm.querySelector(".share-target span").textContent = target.preview ? "Preview on your tailnet" : "App on your tailnet";
+    byID("share-preview-note").hidden = !target.preview;
+    confirm.setAttribute("aria-describedby", target.preview ? "share-warning share-preview-note" : "share-warning");
+    for (const input of confirm.querySelectorAll('input[name="share-duration"]')) {
+      const hidden = target.preview && (input.value === "7d" || input.value === "until-stopped");
+      input.parentElement.hidden = hidden;
+      input.disabled = hidden;
+      input.checked = input.value === (target.preview ? "1h" : "24h");
+    }
     deadline();
     show(confirm);
   }

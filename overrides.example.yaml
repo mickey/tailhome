@@ -1,5 +1,5 @@
 # Keys are Service or device names; the svc: prefix is optional.
-# Every field is optional. web and copy apply only to Services.
+# Every field is optional. web and copy apply only to Services; temporary only to devices.
 jellyfin:
   group: Media
   order: -10                # lower sorts first; unset counts as 0, ties sort by label
@@ -20,3 +20,5 @@ postgres:
   hidden: true
 paperless-ngx:
   label: Paperless
+# "devbox:8443":
+#   temporary: false        # keep this device app under Apps, even offline

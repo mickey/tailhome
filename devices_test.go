@@ -761,7 +761,8 @@ func TestPreviewProbeLifecycle(t *testing.T) {
 			if port != 443 {
 				c.PreviewPorts = []uint16{port}
 			}
-			srv := serveCard(t, n, ca, d, port, `{"title":"A title","description":"A description","icon":"shopify","preview":true,"set":"Landing","version":"A"}`, 200, 502)
+			body := `{"title":"A title","description":"A description","icon":"shopify","preview":true,"set":"Landing","version":"A"}`
+			srv := serveCard(t, n, ca, d, port, body, 200, 502)
 			c.Refresh(t.Context())
 			name := endpointName("devbox", port)
 			check := func(wantCards int) {
@@ -769,6 +770,9 @@ func TestPreviewProbeLifecycle(t *testing.T) {
 				e := deviceEntry(t, c, name)
 				if !e.Temporary || e.Check != "tls" || e.Status != StatusUp || e.Label != "A title" || e.Set != "Landing" || e.Version != "A" {
 					t.Fatalf("preview: %+v", e)
+				}
+				if string(e.cardRaw) != body {
+					t.Fatalf("raw card differs from response: %q", e.cardRaw)
 				}
 				cards, roots := srv.counts()
 				if cards != wantCards || roots != 0 {

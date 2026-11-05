@@ -87,7 +87,7 @@ Previews are private to your tailnet and stay live while your machine is awake a
 
 ## Share an app publicly
 
-Need to show an app to someone outside your tailnet? Click the globe on its tile. tailhome gives it a public HTTPS address through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) for 1 hour, 8 hours, 24 hours, 7 days or until you stop it. Stopping closes public access at once.
+Need to show an app or an agent preview to someone outside your tailnet? Click the globe on its tile. tailhome gives it a public HTTPS address through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) for 1 hour, 8 hours, 24 hours, 7 days or until you stop it. Previews are limited to 24 hours and stop sharing when they are removed or change. Stopping closes public access at once.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/sharing-dark.png">
@@ -114,7 +114,7 @@ Need custom names, groups, icons or ordering? Drop an optional [`config/override
 | [Apps, previews and page controls](docs/apps.md) | How Services, devices and preview cards (`/.well-known/tailhome.json`) are discovered, health indicators and container publishers |
 | [Customization and JSON API](docs/customize.md) | `overrides.yaml` reference, `/go/<name>` shortcuts, `/api/list.json` and `/api/services.json` |
 | [Integrations](docs/integrations.md) | Ready-to-paste widgets for Homepage and Glance, plus DockTail container labels |
-| [`tailnet-preview` skill](skills/tailnet-preview/README.md) | Agent installation, plugins, automatic `AGENTS.md` rules and troubleshooting |
+| [`tailnet-preview` skill](skills/tailnet-preview/README.md) | Agent installation, plugins, automatic `AGENTS.md` rules, with [troubleshooting](skills/tailnet-preview/references/serve.md#troubleshooting-boundaries) in the reference |
 | [Troubleshooting](docs/troubleshooting.md) | Fixes for DNS, certificates, OAuth, missing tiles and Serve permissions |
 
 ## Security and privacy
