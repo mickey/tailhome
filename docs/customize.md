@@ -43,7 +43,7 @@ Run `chmod 644 config/overrides.yaml` and `chmod 755 config`, then refresh the p
 | `url` | Services, devices | Target URL when clicked (must use an [allowed URL scheme](#shortcuts-and-url-schemes)) |
 | `web` | Services only | `true` forces a tile even before HTTP responds; `false` moves the Service to **Other** |
 | `copy` | Services only | Value copied when clicking the **Other** row; on a web Service, also adds a row under **Other** |
-| `target` | Services, devices | Name of the browser tab the tile opens in; tiles with the same name share one tab. Overrides `TAILHOME_LINK_TARGET`. The tab is not opened with `noopener`, because browsers would otherwise open a new tab each time, so only name tabs for apps you trust. Names starting with `_` are browser keywords (`_blank` opens a new tab each time) |
+| `target` | Services, devices | Name of the browser tab the tile opens in; tiles with the same name share one tab. Overrides `TAILHOME_LINK_TARGET`. The tab is not opened with `noopener`, because browsers would otherwise open a new tab each time, so only name tabs for apps you trust. Names starting with `_` are browser keywords (`_blank` opens a new tab each time). Reuse does not work for apps that send `Cross-Origin-Opener-Policy: same-origin`, which makes the browser detach their tab from this page; those tiles open a new tab on every click |
 | `temporary` | Devices only | `true` lists the endpoint under **Previews** (hidden when offline); `false` keeps an extra-port app under **Apps** even when offline |
 
 All fields are optional and keys are case-sensitive (`"devbox:8443"` targets port 8443; `devbox` targets port 443). See [`overrides.example.yaml`](../overrides.example.yaml) for a complete template.
