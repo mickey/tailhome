@@ -20,3 +20,4 @@ postgres:
   hidden: true
 paperless-ngx:
   label: Paperless
+  target: docs              # open in a tab named "docs"; repeat clicks reuse it

@@ -64,7 +64,7 @@
   <h2{{if and (eq $i 0) $.Previews}} class="apps-start"{{end}}>{{if and $.Previews (eq .Name "Previews")}}Previews (apps){{else}}{{.Name}}{{end}}</h2>
   <div class="grid">
     {{range .Entries}}
-    {{if .Share}}<div class="share-tile" data-share-target="{{.Share.TargetID}}">{{end}}<a class="tile" href="{{link .URL}}" title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
+    {{if .Share}}<div class="share-tile" data-share-target="{{.Share.TargetID}}">{{end}}<a class="tile" href="{{link .URL}}"{{with .Target}} target="{{.}}"{{if eq . "_blank"}} rel="noopener"{{end}}{{end}} title="Open {{.Host}}{{if eq .Source `device`}} · device{{end}}">
       {{template "icon" .}}
       <div class="text"><div class="label">{{.Label}}</div>{{template "summary" .}}</div>
       {{if .Unverified}}<span class="unverified">HTTPS certificate could not be verified</span>{{end}}
@@ -180,7 +180,7 @@
 {{define "summary"}}{{if and (eq .Status "down") .Reason}}<div class="sub reason" title="{{.Reason}}">{{.Reason}}</div>{{with .Description}}<span class="sr">{{.}}</span>{{end}}{{else}}{{with .Description}}<div class="sub">{{.}}</div>{{end}}{{end}}{{end}}
 {{define "ring"}}{{$s := "HTTPS connection succeeded at last refresh; pages and app health not checked"}}{{if eq .Status "down"}}{{$s = "HTTPS connection failed at last refresh; pages and app health not checked"}}{{end}}<span class="ring {{.Status}}" role="img" aria-label="{{$s}}" title="{{$s}}"></span>{{end}}
 {{define "preview" -}}
-{{if .Share}}<div class="share-tile share-preview" data-share-target="{{.Share.TargetID}}">{{end}}<a class="tile preview" href="{{link .URL}}" aria-label="{{previewName .}}" aria-describedby="preview-desc-{{.Name}} preview-origin-{{.Name}}{{if .Unverified}} preview-trust-{{.Name}}{{end}}">
+{{if .Share}}<div class="share-tile share-preview" data-share-target="{{.Share.TargetID}}">{{end}}<a class="tile preview" href="{{link .URL}}"{{with .Target}} target="{{.}}"{{if eq . "_blank"}} rel="noopener"{{end}}{{end}} aria-label="{{previewName .}}" aria-describedby="preview-desc-{{.Name}} preview-origin-{{.Name}}{{if .Unverified}} preview-trust-{{.Name}}{{end}}">
   {{if .Version}}<span class="version" aria-hidden="true">{{.Version}}</span>{{else}}{{template "icon" .}}{{end}}
   <div class="text">
     <div class="label">{{.Label}}</div>

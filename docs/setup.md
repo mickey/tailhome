@@ -160,6 +160,7 @@ Recreate containers or restart binaries after changes. Separate tags with commas
 | `TAILHOME_REFRESH` | `5m` | Refresh interval; positive Go duration |
 | `TAILHOME_DEVICES` | `on` | `off` disables device discovery |
 | `TAILHOME_ICONS` | `on` | `off` disables CDN icons |
+| `TAILHOME_LINK_TARGET` | `blank` | `blank` opens tiles in a new tab; `self` opens them in the current tab. A tile's [`target` override](customize.md#overrides) wins |
 | `TAILHOME_DEVICE_TAGS` | empty | Match any listed tag; empty includes untagged devices |
 | `TAILHOME_DEVICE_INSECURE_TLS_TAGS` | empty | [Certificate exceptions](apps.md#devices-with-their-own-certificate) by tag |
 | `TAILHOME_PREVIEW_PORTS` | empty | [Extra discovery ports](#preview-ports) |

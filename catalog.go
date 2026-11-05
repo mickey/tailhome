@@ -85,6 +85,9 @@ type Entry struct {
 	// whose certificate failed verification.
 	Unverified bool       `json:"unverified,omitempty"`
 	Share      *ShareTile `json:"-"`
+	// Target is the browser tab the tile link opens in: empty for the current tab,
+	// "_blank" for a new one, anything else a tab name that repeat clicks reuse.
+	Target string `json:"-"`
 
 	order  int
 	nodeID tailcfg.StableNodeID
@@ -138,6 +141,7 @@ type Catalog struct {
 	Self            string // own Service, left off the page
 	Prober          *Prober
 	Local           bool                           // listing from the netmap, without API credentials
+	LinkTarget      string                         // "blank" opens tile links in a new tab; empty or "self" in the current one (main defaults to "blank")
 	Notices         func(context.Context) []Notice // setup problems, rechecked on every refresh; may be nil
 	Icons           *Icons                         // matches names to icons; nil uses names as-is
 	NoCDNIcons      bool                           // TAILHOME_ICONS=off: suppress icons hosted on cdn.jsdelivr.net
@@ -291,6 +295,9 @@ func (c *Catalog) build(ctx context.Context, manual bool) (View, error) {
 	c.Prober.Check(ctx, entries) // Services only: the insecure Service client must never vouch for a device, so device entries come after, already checked
 	deviceEntries, members, err := c.refreshDevices(ctx, reserved, overrides, manual)
 	entries = append(entries, deviceEntries...)
+	for i := range entries {
+		entries[i].Target = c.tileTarget(overrides[entries[i].Name])
+	}
 	if err != nil {
 		return View{}, fmt.Errorf("devices: listing failed: %w", err)
 	}
@@ -569,4 +576,16 @@ func sortPreviews(entries []Entry) {
 		return cmp.Or(cmp.Compare(a.Set, b.Set), cmp.Compare(a.Host, b.Host), cmp.Compare(a.nodeID, b.nodeID),
 			cmp.Compare(rank(a.Version == ""), rank(b.Version == "")), cmp.Compare(a.Version, b.Version), compareEntries(a, b))
 	})
+}
+
+// tileTarget picks the tab a tile opens in: its own target override, else the
+// global TAILHOME_LINK_TARGET.
+func (c *Catalog) tileTarget(o Override) string {
+	if o.Target != "" {
+		return o.Target
+	}
+	if c.LinkTarget == "blank" {
+		return "_blank"
+	}
+	return ""
 }

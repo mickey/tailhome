@@ -222,3 +222,30 @@ func TestWebUnknownAssetVersion(t *testing.T) {
 		t.Errorf("unknown asset render error: %v", err)
 	}
 }
+
+func TestWebTileTarget(t *testing.T) {
+	tile := func(name, target string) Entry {
+		return Entry{Name: name, Label: name, Host: name + ".example", URL: "https://" + name + "/", Status: StatusUp, Target: target}
+	}
+	preview := webPreview("devbox:8443", "Hero", "", "")
+	preview.Target = "_blank"
+	html := renderWebView(t, View{
+		Previews: []Entry{preview},
+		Groups:   []Group{{Name: "Apps", Entries: []Entry{tile("plain", ""), tile("fresh", "_blank"), tile("docs", "docs")}}},
+	}, true)
+	for _, want := range []string{
+		`href="https://fresh/" target="_blank" rel="noopener"`,
+		`href="https://docs/" target="docs" title=`, // a named tab is not opened with noopener, or it could not be reused
+		`href="https://devbox:8443/" target="_blank" rel="noopener"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q in %s", want, html)
+		}
+	}
+	if strings.Contains(html, `href="https://plain/" target`) {
+		t.Error("a tile without a target opens in the current tab")
+	}
+	if strings.Contains(html, `target="docs" rel=`) {
+		t.Error("a named tab must not carry rel=noopener")
+	}
+}
