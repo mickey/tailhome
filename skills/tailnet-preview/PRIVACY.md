@@ -16,6 +16,8 @@ Tailscale carries traffic under its [privacy policy](https://tailscale.com/priva
 
 The skill contacts your local app, its published HTTPS link and your optional `TAILHOME_URL` to refresh and check the listing.
 
+It reads no credentials. From your environment it reads only `TAILSCALE`, `TAILNET_PREVIEW_PORTS`, `TAILHOME_URL` and `XDG_STATE_HOME`. It runs the Tailscale CLI with only `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_*` and `TMPDIR`, plus `TAILSCALE_BE_CLI=1` on macOS.
+
 It stores preview ownership records, local app addresses and card metadata in `~/.local/state/tailnet-preview/`, or `$XDG_STATE_HOME/tailnet-preview/` when set. Only your user can read them.
 
 Remove previews before deleting these records. Without them, cleanup leaves the Serve mappings in place.

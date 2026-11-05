@@ -152,8 +152,14 @@ def cli_argv(args):
     return [executable] + args
 
 
+# The CLI only needs these to find the daemon (macOS app variants run lsof and
+# launchctl through PATH). Nothing else from the agent's environment, such as
+# API keys, reaches the subprocess.
+CLI_ENV_KEYS = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'TMPDIR')
+
+
 def cli_env():
-    environment = os.environ.copy()
+    environment = {k: v for k, v in os.environ.items() if k in CLI_ENV_KEYS or k.startswith('LC_')}
     if sys.platform == 'darwin':
         environment['TAILSCALE_BE_CLI'] = '1'
     return environment

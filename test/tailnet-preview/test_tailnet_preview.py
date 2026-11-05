@@ -89,6 +89,11 @@ class HelperTests(unittest.TestCase):
                                                'TAILNET_PREVIEW_PORTS': '8443-8445', 'TAILHOME_URL': '', 'TAILSCALE': ''})
         self.env.start()
         self.addCleanup(self.env.stop)
+        # The fake CLI reads its fixture switches from the environment, which the helper filters.
+        fixture_keys = ('FAKE_ROOT', 'FAKE_OPERATOR', 'FAIL_PREFS', 'FAIL_CARD', 'DENY_SERVE', 'NC_PORT', 'NC_STALL')
+        keys = mock.patch.object(helper, 'CLI_ENV_KEYS', helper.CLI_ENV_KEYS + fixture_keys)
+        keys.start()
+        self.addCleanup(keys.stop)
         helper.tailnet_status.cache_clear()
         self.addCleanup(helper.tailnet_status.cache_clear)
         self.card = self.root / 'card.json'
@@ -1429,15 +1434,21 @@ class ValidationTests(unittest.TestCase):
                         helper.cli_argv([])
                 self.assertEqual(which.call_args_list, [mock.call(value) for value in calls])
 
-    def test_macos_environment_is_copied_and_errors_preserved(self):
+    def test_cli_environment_is_minimal_and_errors_preserved(self):
         done = mock.Mock(returncode=0, stdout='ok', stderr='')
+        parent = {'TAILSCALE_BE_CLI': 'parent', 'PATH': '/fixture/bin', 'HOME': '/fixture/home', 'LC_ALL': 'C',
+                  'ANTHROPIC_API_KEY': 'secret', 'GITHUB_TOKEN': 'secret', 'HTTPS_PROXY': 'http://proxy'}
         with mock.patch.object(helper.sys, 'platform', 'darwin'), \
-                mock.patch.dict(os.environ, {'TAILSCALE_BE_CLI': 'parent'}), \
+                mock.patch.dict(os.environ, parent), \
                 mock.patch.object(helper.shutil, 'which', return_value='/fixture/Tailscale app'), \
                 mock.patch.object(helper.subprocess, 'run', return_value=done) as run:
             helper.run(['serve', 'status', '--json'])
             self.assertEqual(run.call_args.args[0], ['/fixture/Tailscale app', 'serve', 'status', '--json'])
-            self.assertEqual(run.call_args.kwargs['env']['TAILSCALE_BE_CLI'], '1')
+            env = run.call_args.kwargs['env']
+            self.assertEqual(env['TAILSCALE_BE_CLI'], '1')
+            self.assertEqual((env['PATH'], env['HOME'], env['LC_ALL']), ('/fixture/bin', '/fixture/home', 'C'))
+            for secret in ['ANTHROPIC_API_KEY', 'GITHUB_TOKEN', 'HTTPS_PROXY']:
+                self.assertNotIn(secret, env)
             self.assertEqual(os.environ['TAILSCALE_BE_CLI'], 'parent')
             self.assertEqual(run.call_args.kwargs['timeout'], helper.TIMEOUT)
             done.returncode, done.stderr = 1, 'administrator consent required'
